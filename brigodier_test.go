@@ -3,6 +3,7 @@ package brigodier
 import (
 	"context"
 	"fmt"
+	"github.com/davecgh/go-spew/spew"
 	"github.com/stretchr/testify/require"
 	"testing"
 )
@@ -27,16 +28,8 @@ func TestB(t *testing.T) {
 	parse := d.Parse(context.TODO(), "foo")
 	require.NotNil(t, parse)
 
+	spew.Dump(parse)
+
 	err := d.Execute(parse)
 	require.NoError(t, err)
-	//d.Literal("foo").
-	//	Then(
-	//		Argument("bar", Integer()).
-	//			Executes(func(Context) int {
-	//				return 1
-	//			}),
-	//	).
-	//	Executes(func(Context) int {
-	//		return 1
-	//	})
 }

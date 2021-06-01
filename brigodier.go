@@ -11,11 +11,49 @@ import (
 const (
 	// ArgumentSeparator is the default string required
 	// to separate individual arguments in an input string.
-	ArgumentSeparator = ' '
+	ArgumentSeparator rune = ' '
 )
 
 type Dispatcher struct {
 	Root RootCommandNode
+}
+
+func (d *Dispatcher) AllUsage(ctx context.Context, node CommandNode, restricted bool) []string {
+	return d.allUsage(ctx, node, nil, "", restricted)
+}
+func (d *Dispatcher) allUsage(ctx context.Context, node CommandNode, result []string, prefix string, restricted bool) []string {
+	if restricted && !node.CanUse(ctx) {
+		return result
+	}
+	if node.Command() != nil {
+		result = append(result, prefix)
+	}
+	if node.Redirect() != nil {
+		var redirect string
+		if node.Redirect() == &d.Root {
+			redirect = "..."
+		} else {
+			redirect = "-> " + node.Redirect().UsageText()
+			var add string
+			if prefix == "" {
+				add = fmt.Sprintf("%s%c%s", node.UsageText(), ArgumentSeparator, redirect)
+			} else {
+				add = fmt.Sprintf("%s%c%s", prefix, ArgumentSeparator, redirect)
+			}
+			result = append(result, add)
+		}
+	} else { // if len(node.Children()) != 0
+		for _, child := range node.Children() {
+			var p string
+			if prefix == "" {
+				p = child.UsageText()
+			} else {
+				p = fmt.Sprintf("%s%c%s", prefix, ArgumentSeparator, child.UsageText())
+			}
+			result = d.allUsage(ctx, child, result, p, restricted)
+		}
+	}
+	return result
 }
 
 func (d *Dispatcher) Register(commands ...*LiteralArgumentBuilder) {
@@ -256,7 +294,7 @@ type CommandContext struct {
 	Forks     bool
 	Input     string
 
-	Cursor int
+	cursor int
 }
 
 func (c *CommandContext) build(input string) *CommandContext {
@@ -321,7 +359,7 @@ func (c *CommandContext) Copy() *CommandContext {
 		Modifier: c.Modifier,
 		Forks:    c.Forks,
 		Input:    c.Input,
-		Cursor:   c.Cursor,
+		cursor:   c.cursor,
 	}
 }
 
@@ -373,7 +411,10 @@ func (d *Dispatcher) parseNodes(originalReader *StringReader, node CommandNode, 
 
 		err = child.Parse(ctx, rd)
 		if err == nil && rd.canRead() && rd.peek() != ArgumentSeparator {
-			err = &CommandSyntaxError{Err: ErrDispatcherExpectedArgumentSeparator}
+			err = &CommandSyntaxError{Err: &ReaderError{
+				Err:    ErrDispatcherExpectedArgumentSeparator,
+				Reader: rd,
+			}}
 		}
 		if err != nil {
 			errs[child] = err
@@ -393,7 +434,7 @@ func (d *Dispatcher) parseNodes(originalReader *StringReader, node CommandNode, 
 				childCtx := &CommandContext{
 					Context:  ctx,
 					RootNode: redirect,
-					Cursor:   rd.Cursor,
+					cursor:   rd.Cursor,
 					Range: StringRange{
 						Start: rd.Cursor,
 						End:   rd.Cursor,
@@ -471,20 +512,21 @@ func (n *Node) AddChild(nodes ...CommandNode) {
 	}
 }
 
-func (n *Node) RelevantNodes(input *StringReader) (nodes []CommandNode) {
-	if len(n.Literals()) != 0 {
+func (n *Node) RelevantNodes(input *StringReader) []CommandNode {
+	if len(n.literals) != 0 {
 		cursor := input.Cursor
 		for input.canRead() && input.peek() != ArgumentSeparator {
 			input.skip()
 		}
 		text := input.String[cursor:input.Cursor]
 		input.Cursor = cursor
-		literal, ok := n.Literals()[text]
+		literal, ok := n.literals[text]
 		if ok {
 			return []CommandNode{literal}
 		}
 	}
-	for _, a := range n.Arguments() {
+	nodes := make([]CommandNode, 0, len(n.arguments))
+	for _, a := range n.arguments {
 		nodes = append(nodes, a)
 	}
 	return nodes
@@ -512,6 +554,7 @@ type CommandNode interface {
 	Children() map[string]CommandNode
 	setCommand(Command)
 	AddChild(nodes ...CommandNode)
+	UsageText() string
 }
 
 type Node struct {
@@ -563,7 +606,9 @@ type RootCommandNode struct {
 	Node
 }
 
+func (r *RootCommandNode) String() string                             { return "<root>" }
 func (r *RootCommandNode) Name() string                               { return "" }
+func (r *RootCommandNode) UsageText() string                          { return "" }
 func (r *RootCommandNode) Parse(*CommandContext, *StringReader) error { return nil }
 
 type LiteralCommandNode struct {
@@ -573,18 +618,21 @@ type LiteralCommandNode struct {
 
 type IncorrectLiteralError struct {
 	Literal string
-	Reader  *StringReader
 }
 
 func (e *IncorrectLiteralError) Error() string { return fmt.Sprintf("incorrect literal %q", e.Literal) }
 
-func (n *LiteralCommandNode) String() string { return n.Literal }
-func (n *LiteralCommandNode) Name() string   { return n.Literal }
+func (n *LiteralCommandNode) String() string    { return n.Literal }
+func (n *LiteralCommandNode) Name() string      { return n.Literal }
+func (n *LiteralCommandNode) UsageText() string { return n.Literal }
 func (n *LiteralCommandNode) Parse(ctx *CommandContext, rd *StringReader) error {
 	start := rd.Cursor
 	end := n.parse(rd)
 	if end <= -1 {
-		return &CommandSyntaxError{Err: &IncorrectLiteralError{Literal: n.Literal, Reader: rd}}
+		return &CommandSyntaxError{Err: &ReaderError{
+			Err:    &IncorrectLiteralError{Literal: n.Literal},
+			Reader: rd,
+		}}
 	}
 	ctx.withNode(n, &StringRange{Start: start, End: end})
 	return nil
@@ -629,6 +677,15 @@ func (a *ArgumentCommandNode) Parse(ctx *CommandContext, rd *StringReader) error
 func (a *ArgumentCommandNode) String() string     { return a.name }
 func (a *ArgumentCommandNode) Name() string       { return a.name }
 func (a *ArgumentCommandNode) Type() ArgumentType { return a.argType }
+
+const (
+	UsageArgumentOpen  rune = '['
+	UsageArgumentClose rune = ']'
+)
+
+func (a *ArgumentCommandNode) UsageText() string {
+	return fmt.Sprintf("%c%s%c", UsageArgumentOpen, a.name, UsageArgumentClose)
+}
 
 type ParsedArgument struct {
 	Range  *StringRange
