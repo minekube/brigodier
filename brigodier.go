@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -29,19 +31,18 @@ func (d *Dispatcher) allUsage(ctx context.Context, node CommandNode, result []st
 		result = append(result, prefix)
 	}
 	if node.Redirect() != nil {
-		var redirect string
+		var add, redirect string
 		if node.Redirect() == &d.Root {
 			redirect = "..."
 		} else {
 			redirect = "-> " + node.Redirect().UsageText()
-			var add string
-			if prefix == "" {
-				add = fmt.Sprintf("%s%c%s", node.UsageText(), ArgumentSeparator, redirect)
-			} else {
-				add = fmt.Sprintf("%s%c%s", prefix, ArgumentSeparator, redirect)
-			}
-			result = append(result, add)
 		}
+		if prefix == "" {
+			add = fmt.Sprintf("%s%c%s", node.UsageText(), ArgumentSeparator, redirect)
+		} else {
+			add = fmt.Sprintf("%s%c%s", prefix, ArgumentSeparator, redirect)
+		}
+		result = append(result, add)
 	} else { // if len(node.Children()) != 0
 		for _, child := range node.Children() {
 			var p string
@@ -56,10 +57,10 @@ func (d *Dispatcher) allUsage(ctx context.Context, node CommandNode, result []st
 	return result
 }
 
-func (d *Dispatcher) Register(commands ...*LiteralArgumentBuilder) {
-	for _, c := range commands {
-		d.Root.AddChild(c.build())
-	}
+func (d *Dispatcher) Register(command *LiteralArgumentBuilder) *LiteralCommandNode {
+	build := command._build()
+	d.Root.AddChild(build)
+	return build
 }
 
 func Literal(literal string) *LiteralArgumentBuilder {
@@ -71,11 +72,14 @@ type LiteralArgumentBuilder struct {
 	ArgumentBuilder
 }
 
-func (b *LiteralArgumentBuilder) Then(argument interface{ build() CommandNode }) *LiteralArgumentBuilder {
-	b.Arguments.AddChild(argument.build())
+func (b *LiteralArgumentBuilder) Then(arguments ...interface{ build() CommandNode }) *LiteralArgumentBuilder {
+	for _, a := range arguments {
+		b.Arguments.AddChild(a.build())
+	}
 	return b
 }
-func (b *LiteralArgumentBuilder) build() CommandNode {
+func (b *LiteralArgumentBuilder) build() CommandNode { return b._build() }
+func (b *LiteralArgumentBuilder) _build() *LiteralCommandNode {
 	return &LiteralCommandNode{
 		Node:    *b.ArgumentBuilder.build(),
 		Literal: b.Literal,
@@ -87,6 +91,13 @@ type RequiredArgumentBuilder struct {
 
 	Name string
 	Type ArgumentType
+}
+
+func (b *RequiredArgumentBuilder) Then(arguments ...interface{ build() CommandNode }) *RequiredArgumentBuilder {
+	for _, a := range arguments {
+		b.Arguments.AddChild(a.build())
+	}
+	return b
 }
 
 func (b *RequiredArgumentBuilder) build() CommandNode {
@@ -136,22 +147,22 @@ func (b *ArgumentBuilder) Redirect(target CommandNode) *ArgumentBuilder {
 	return b.forward(target, nil, false)
 }
 func (b *LiteralArgumentBuilder) RedirectWithModifier(target CommandNode, modifier RedirectModifier) *LiteralArgumentBuilder {
-	b.RedirectWithModifier(target, modifier)
+	b.ArgumentBuilder.RedirectWithModifier(target, modifier)
 	return b
 }
 func (b *RequiredArgumentBuilder) RedirectWithModifier(target CommandNode, modifier RedirectModifier) *RequiredArgumentBuilder {
-	b.RedirectWithModifier(target, modifier)
+	b.ArgumentBuilder.RedirectWithModifier(target, modifier)
 	return b
 }
 func (b *ArgumentBuilder) RedirectWithModifier(target CommandNode, modifier RedirectModifier) *ArgumentBuilder {
 	return b.forward(target, modifier, false)
 }
 func (b *LiteralArgumentBuilder) Fork(target CommandNode, modifier RedirectModifier) *LiteralArgumentBuilder {
-	b.Fork(target, modifier)
+	b.ArgumentBuilder.Fork(target, modifier)
 	return b
 }
 func (b *RequiredArgumentBuilder) Fork(target CommandNode, modifier RedirectModifier) *RequiredArgumentBuilder {
-	b.Fork(target, modifier)
+	b.ArgumentBuilder.Fork(target, modifier)
 	return b
 }
 func (b *ArgumentBuilder) Fork(target CommandNode, modifier RedirectModifier) *ArgumentBuilder {
@@ -348,13 +359,7 @@ func (c *CommandContext) Copy() *CommandContext {
 		RootNode: c.RootNode,
 		Child:    c.Child,
 		Command:  c.Command,
-		Nodes: func() []*ParsedCommandNode {
-			l := make([]*ParsedCommandNode, 0, len(c.Nodes))
-			for _, n := range c.Nodes {
-				l = append(l, n)
-			}
-			return l
-		}(),
+		Nodes:    append(make([]*ParsedCommandNode, 0, len(c.Nodes)), c.Nodes...),
 		Range:    c.Range.Copy(),
 		Modifier: c.Modifier,
 		Forks:    c.Forks,
@@ -364,7 +369,26 @@ func (c *CommandContext) Copy() *CommandContext {
 }
 
 func (c *CommandContext) Int(argumentName string) int {
-	return 0 // TODO
+	if c.Arguments == nil {
+		return 0
+	}
+	r, ok := c.Arguments[argumentName]
+	if !ok {
+		return 0
+	}
+	v, _ := r.Result.(int)
+	return v
+}
+func (c *CommandContext) Bool(argumentName string) bool {
+	if c.Arguments == nil {
+		return false
+	}
+	r, ok := c.Arguments[argumentName]
+	if !ok {
+		return false
+	}
+	v, _ := r.Result.(bool)
+	return v
 }
 
 type RedirectModifier interface {
@@ -378,6 +402,10 @@ type CommandSyntaxError struct {
 func (e *CommandSyntaxError) Unwrap() error { return e.Err }
 func (e *CommandSyntaxError) Error() string {
 	return e.Err.Error()
+}
+
+func (d *Dispatcher) ParseExecute(ctx context.Context, command string) error {
+	return d.Execute(d.Parse(ctx, command))
 }
 
 func (d *Dispatcher) Parse(ctx context.Context, command string) *ParseResults {
@@ -444,7 +472,7 @@ func (d *Dispatcher) parseNodes(originalReader *StringReader, node CommandNode, 
 				ctx.Child = parse.Context
 				return &ParseResults{
 					Context: ctx,
-					Reader:  rd,
+					Reader:  parse.Reader,
 					Errs:    parse.Errs,
 				}
 			}
@@ -457,24 +485,26 @@ func (d *Dispatcher) parseNodes(originalReader *StringReader, node CommandNode, 
 		}
 	}
 
-	if len(potentials) > 1 {
-		sort.Slice(potentials, func(i, j int) bool {
-			a := potentials[i]
-			b := potentials[j]
-			if !a.Reader.canRead() && b.Reader.canRead() {
-				return true
-			}
-			if a.Reader.canRead() && !b.Reader.canRead() {
+	if len(potentials) != 0 {
+		if len(potentials) > 1 {
+			sort.Slice(potentials, func(i, j int) bool {
+				a := potentials[i]
+				b := potentials[j]
+				if !a.Reader.canRead() && b.Reader.canRead() {
+					return true
+				}
+				if a.Reader.canRead() && !b.Reader.canRead() {
+					return false
+				}
+				if len(a.Errs) == 0 && len(b.Errs) != 0 {
+					return false
+				}
+				if len(a.Errs) != 0 && len(b.Errs) == 0 {
+					return true
+				}
 				return false
-			}
-			if len(a.Errs) == 0 && len(b.Errs) != 0 {
-				return false
-			}
-			if len(a.Errs) != 0 && len(b.Errs) == 0 {
-				return true
-			}
-			return false
-		})
+			})
+		}
 		return potentials[0]
 	}
 
@@ -622,7 +652,7 @@ type IncorrectLiteralError struct {
 
 func (e *IncorrectLiteralError) Error() string { return fmt.Sprintf("incorrect literal %q", e.Literal) }
 
-func (n *LiteralCommandNode) String() string    { return n.Literal }
+func (n *LiteralCommandNode) String() string    { return fmt.Sprintf("<literal %s>", n.Literal) }
 func (n *LiteralCommandNode) Name() string      { return n.Literal }
 func (n *LiteralCommandNode) UsageText() string { return n.Literal }
 func (n *LiteralCommandNode) Parse(ctx *CommandContext, rd *StringReader) error {
@@ -674,7 +704,9 @@ func (a *ArgumentCommandNode) Parse(ctx *CommandContext, rd *StringReader) error
 	return nil
 }
 
-func (a *ArgumentCommandNode) String() string     { return a.name }
+func (a *ArgumentCommandNode) String() string {
+	return fmt.Sprintf("<argument %s:%s>", a.name, a.argType)
+}
 func (a *ArgumentCommandNode) Name() string       { return a.name }
 func (a *ArgumentCommandNode) Type() ArgumentType { return a.argType }
 
@@ -698,25 +730,56 @@ type ArgumentType interface {
 }
 
 type ArgumentTypeFuncs struct {
-	ParseFn func(rd *StringReader) (interface{}, error)
 	Name    string
+	ParseFn func(rd *StringReader) (interface{}, error)
 }
 
 func (t *ArgumentTypeFuncs) Parse(rd *StringReader) (interface{}, error) { return t.ParseFn(rd) }
 func (t *ArgumentTypeFuncs) String() string                              { return t.Name }
 
 var (
-	Bool             ArgumentType
-	BoolArgumentType ArgumentType
+	Bool ArgumentType
+	Int  ArgumentType
 )
 
 func init() {
-	BoolArgumentType = &ArgumentTypeFuncs{
-		Name:    "Bool",
+	Bool = &ArgumentTypeFuncs{
+		Name:    "bool",
 		ParseFn: func(rd *StringReader) (interface{}, error) { return rd.readBool() },
 	}
-	Bool = BoolArgumentType
+	Int = &IntegerArgumentType{
+		Min: math.MinInt32,
+		Max: math.MaxInt32,
+	}
 }
+
+type IntegerArgumentType struct{ Min, Max int }
+
+var (
+	ErrArgumentIntegerTooLow  = errors.New("integer too low")
+	ErrArgumentIntegerTooHigh = errors.New("integer too high")
+)
+
+func (t *IntegerArgumentType) Parse(rd *StringReader) (interface{}, error) {
+	start := rd.Cursor
+	result, err := rd.readInt()
+	if err != nil {
+		return nil, err
+	}
+	if result < t.Min {
+		rd.Cursor = start
+		return nil, &CommandSyntaxError{Err: fmt.Errorf("%w (%d < %d)",
+			ErrArgumentIntegerTooLow, result, t.Min)}
+	}
+	if result > t.Max {
+		rd.Cursor = start
+		return nil, &CommandSyntaxError{Err: fmt.Errorf("%w (%d > %d)",
+			ErrArgumentIntegerTooHigh, result, t.Max)}
+	}
+	return result, nil
+}
+
+func (t *IntegerArgumentType) String() string { return "int" }
 
 type LiteralArgument struct {
 	Node
@@ -778,7 +841,7 @@ func (r *StringReader) readBool() (bool, error) {
 	r.Cursor = start
 	return false, &CommandSyntaxError{Err: &ReaderError{
 		Err: &ReaderInvalidValueError{
-			Type:  BoolArgumentType,
+			Type:  Bool,
 			Value: value,
 		},
 		Reader: r,
@@ -799,7 +862,7 @@ func (r *StringReader) readString() (string, error) {
 		r.skip()
 		return r.readStringUntil(next)
 	}
-	return r.readUnquotedString()
+	return r.readUnquotedString(), nil
 }
 
 var (
@@ -844,7 +907,15 @@ func (r *StringReader) readStringUntil(terminator rune) (string, error) {
 	}}
 }
 
-func (r *StringReader) readUnquotedString() (string, error) {
+func (r *StringReader) readUnquotedString() string {
+	start := r.Cursor
+	for r.canRead() && isAllowedInUnquotedString(r.peek()) {
+		r.skip()
+	}
+	return r.String[start:r.Cursor]
+}
+
+func (r *StringReader) readQuotedString() (string, error) {
 	if !r.canRead() {
 		return "", nil
 	}
@@ -859,14 +930,53 @@ func (r *StringReader) readUnquotedString() (string, error) {
 	return r.readStringUntil(next)
 }
 
+var (
+	ErrReaderExpectedInt = errors.New("reader expected int")
+	ErrReaderInvalidInt  = errors.New("read invalid int")
+)
+
+func (r *StringReader) readInt() (int, error) {
+	start := r.Cursor
+	for r.canRead() && isAllowedNumber(r.peek()) {
+		r.skip()
+	}
+	number := r.String[start:r.Cursor]
+	if number == "" {
+		return 0, &CommandSyntaxError{Err: &ReaderError{
+			Err:    ErrReaderExpectedInt,
+			Reader: r,
+		}}
+	}
+	i, err := strconv.ParseInt(number, 0, 32)
+	if err != nil {
+		r.Cursor = start
+		return 0, &CommandSyntaxError{Err: &ReaderInvalidValueError{
+			Value: number,
+			Err:   fmt.Errorf("%w (%q): %v", ErrReaderInvalidInt, number, err),
+		}}
+	}
+	return int(i), nil
+}
+
+func (r *StringReader) remaining() string { return r.String[r.Cursor:] }
+
 const (
 	SyntaxDoubleQuote = '"'
 	SyntaxSingleQuote = '\''
 	SyntaxEscape      = '\\'
 )
 
+func isAllowedNumber(c rune) bool { return c >= '0' && c <= '9' || c == '.' || c == '-' }
+
 func isQuotedStringStart(c rune) bool {
 	return c == SyntaxDoubleQuote || c == SyntaxSingleQuote
+}
+func isAllowedInUnquotedString(c rune) bool {
+	return c >= '0' && c <= '9' ||
+		c >= 'A' && c <= 'Z' ||
+		c >= 'a' && c <= 'z' ||
+		c == '_' || c == '-' ||
+		c == '.' || c == '+'
 }
 
 type StringRange struct{ Start, End int }
@@ -876,6 +986,10 @@ func (r *StringRange) IsEmpty() bool {
 }
 
 func (r StringRange) Copy() StringRange { return r }
+
+func (r *StringRange) get(s string) string {
+	return s[r.Start:r.End]
+}
 
 func encompassingRange(r1, r2 *StringRange) *StringRange {
 	return &StringRange{
