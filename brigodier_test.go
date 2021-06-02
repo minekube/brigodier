@@ -81,6 +81,7 @@ func TestDispatcher_Execute_EmptyCommand(t *testing.T) {
 	require.ErrorIs(t, err, ErrDispatcherUnknownCommand)
 	require.Equal(t, 0, err.Reader.Cursor)
 }
+
 func TestDispatcher_Execute_IncorrectLiteral(t *testing.T) {
 	var (
 		d     Dispatcher
@@ -135,6 +136,7 @@ func TestDispatcher_ParseIncompleteLiteral(t *testing.T) {
 	require.Equal(t, " ", parse.Reader.remaining())
 	require.Len(t, parse.Context.Nodes, 1)
 }
+
 func TestDispatcher_ParseIncompleteArgument(t *testing.T) {
 	var d Dispatcher
 	d.Register(Literal("foo").Then(Argument("bar", Int)))
@@ -171,7 +173,7 @@ func TestDispatcher_Execute_AmbiguousParentSubcommandViaRedirect(t *testing.T) {
 	require.True(t, c2)
 }
 
-func TestRedirectMultipleTimes(t *testing.T) {
+func TestDispatcher_Execute_RedirectMultipleTimes(t *testing.T) {
 	var d Dispatcher
 	var cmdInput string
 	cmd := CommandFunc(func(c *CommandContext) error { cmdInput += c.Input; return nil })
@@ -207,26 +209,100 @@ func TestRedirectMultipleTimes(t *testing.T) {
 	require.Equal(t, input, cmdInput)
 }
 
-func TestB(t *testing.T) {
-	//d.Register(
-	//	Literal("foo").
-	//		Then(
-	//			Argument("baz", Int).
-	//				Executes(CommandFunc(func(c *CommandContext) error {
-	//					fmt.Printf("Baz is %v\n", c.Int("baz"))
-	//					return nil
-	//				})),
-	//		).
-	//		Then(
-	//			Argument("bar", Bool).
-	//				Executes(CommandFunc(func(c *CommandContext) error {
-	//					fmt.Printf("Bar is %v\n", c.Bool("bar"))
-	//					return nil
-	//				})),
-	//		).
-	//		Executes(CommandFunc(func(c *CommandContext) error {
-	//			fmt.Println("Called foo with no arguments")
-	//			return nil
-	//		})),
-	//)
+func TestDispatcher_Execute_Redirected(t *testing.T) {
+	var d Dispatcher
+	var cmdInput string
+	cmd := CommandFunc(func(c *CommandContext) error { cmdInput += c.Input; return nil })
+	mod := ModifierFunc(func(c *CommandContext) (context.Context, error) {
+		// another context
+		return context.Background(), nil
+	})
+
+	concreteNode := d.Register(Literal("actual").Executes(cmd))
+	redirectNode := d.Register(Literal("redirected").Fork(&d.Root, mod))
+
+	const input = "redirected actual"
+	parse := d.Parse(context.TODO(), input)
+	require.Equal(t, "redirected", parse.Context.Range.get(input))
+	require.Len(t, parse.Context.Nodes, 1)
+	require.Equal(t, &d.Root, parse.Context.RootNode)
+	require.Equal(t, parse.Context.Range, *parse.Context.Nodes[0].Range)
+	require.Equal(t, redirectNode, parse.Context.Nodes[0].Node)
+
+	parent := parse.Context.Child
+	require.NotNil(t, parent)
+	require.Equal(t, "actual", parent.Range.get(input))
+	require.Len(t, parse.Context.Nodes, 1)
+	require.Equal(t, &d.Root, parse.Context.RootNode)
+	require.Equal(t, parent.Range, *parent.Nodes[0].Range)
+	require.Equal(t, concreteNode, parent.Nodes[0].Node)
+
+	require.NoError(t, d.Execute(parse))
+	require.Equal(t, input, cmdInput)
+}
+
+func TestDispatcher_Execute_OrphanedSubcommand(t *testing.T) {
+	var d Dispatcher
+	cmd := CommandFunc(func(c *CommandContext) error { return nil })
+	d.Register(Literal("foo").Then(Argument("bar", Int)).Executes(cmd))
+
+	var err *ReaderError
+	require.True(t, errors.As(d.ParseExecute(context.TODO(), "foo 5"), &err))
+	require.ErrorIs(t, err, ErrDispatcherUnknownCommand)
+	require.Equal(t, 5, err.Reader.Cursor)
+}
+
+func TestDispatcher_Execute_invalidOther(t *testing.T) {
+	var d Dispatcher
+	var i int
+	cmd := CommandFunc(func(c *CommandContext) error { i += 1; return nil })
+	wrongCmd := CommandFunc(func(c *CommandContext) error { i -= 100; return nil })
+	d.Register(Literal("w").Executes(wrongCmd))
+	d.Register(Literal("world").Executes(cmd))
+
+	require.NoError(t, d.ParseExecute(context.TODO(), "world"))
+	require.Equal(t, 1, i)
+}
+
+func TestDispatcher_Execute_noSpaceSeparator(t *testing.T) {
+	var d Dispatcher
+	cmd := CommandFunc(func(c *CommandContext) error { return nil })
+	d.Register(Literal("foo").Then(Argument("bar", Int)).Executes(cmd))
+
+	var err *ReaderError
+	require.True(t, errors.As(d.ParseExecute(context.TODO(), "foo$"), &err))
+	require.ErrorIs(t, err, ErrDispatcherUnknownCommand)
+	require.Equal(t, 0, err.Reader.Cursor)
+}
+
+func TestDispatcher_Execute_InvalidSubcommand(t *testing.T) {
+	var d Dispatcher
+	cmd := CommandFunc(func(c *CommandContext) error { return nil })
+	d.Register(Literal("foo").Then(Argument("bar", Int)).Executes(cmd))
+
+	var err *ReaderError
+	require.True(t, errors.As(d.ParseExecute(context.TODO(), "foo bar"), &err))
+	require.ErrorIs(t, err, ErrReaderExpectedInt)
+	require.Equal(t, 4, err.Reader.Cursor)
+}
+
+func TestDispatcher_Path(t *testing.T) {
+	var d Dispatcher
+	bar := Literal("bar").Build()
+	d.Register(Literal("foo").Then(bar))
+
+	require.Equal(t, []string{"foo", "bar"}, d.Path(bar))
+}
+
+func TestDispatcher_FindNode(t *testing.T) {
+	var d Dispatcher
+	bar := Literal("bar").Build()
+	d.Register(Literal("foo").Then(bar))
+
+	require.Equal(t, bar, d.FindNode("foo", "bar"))
+}
+
+func TestDispatcher_FindNode_DoesntExist(t *testing.T) {
+	var d Dispatcher
+	require.Nil(t, d.FindNode("foo", "bar"))
 }

@@ -58,147 +58,9 @@ func (d *Dispatcher) allUsage(ctx context.Context, node CommandNode, result []st
 }
 
 func (d *Dispatcher) Register(command *LiteralArgumentBuilder) *LiteralCommandNode {
-	build := command._build()
-	d.Root.AddChild(build)
-	return build
-}
-
-func Literal(literal string) *LiteralArgumentBuilder {
-	return &LiteralArgumentBuilder{Literal: literal}
-}
-
-type LiteralArgumentBuilder struct {
-	Literal string
-	ArgumentBuilder
-}
-
-func (b *LiteralArgumentBuilder) Then(arguments ...interface{ build() CommandNode }) *LiteralArgumentBuilder {
-	for _, a := range arguments {
-		b.Arguments.AddChild(a.build())
-	}
+	b := command.Build()
+	d.Root.AddChild(b)
 	return b
-}
-func (b *LiteralArgumentBuilder) build() CommandNode { return b._build() }
-func (b *LiteralArgumentBuilder) _build() *LiteralCommandNode {
-	return &LiteralCommandNode{
-		Node:    *b.ArgumentBuilder.build(),
-		Literal: b.Literal,
-	}
-}
-
-type RequiredArgumentBuilder struct {
-	ArgumentBuilder
-
-	Name string
-	Type ArgumentType
-}
-
-func (b *RequiredArgumentBuilder) Then(arguments ...interface{ build() CommandNode }) *RequiredArgumentBuilder {
-	for _, a := range arguments {
-		b.Arguments.AddChild(a.build())
-	}
-	return b
-}
-
-func (b *RequiredArgumentBuilder) build() CommandNode {
-	return &ArgumentCommandNode{
-		Node:    *b.ArgumentBuilder.build(),
-		name:    b.Name,
-		argType: b.Type,
-	}
-}
-
-func Argument(name string, argType ArgumentType) *RequiredArgumentBuilder {
-	return &RequiredArgumentBuilder{Name: name, Type: argType}
-}
-func (b *LiteralArgumentBuilder) Executes(command Command) *LiteralArgumentBuilder {
-	b.ArgumentBuilder.Executes(command)
-	return b
-}
-func (b *RequiredArgumentBuilder) Executes(command Command) *RequiredArgumentBuilder {
-	b.ArgumentBuilder.Executes(command)
-	return b
-}
-func (b *ArgumentBuilder) Executes(command Command) *ArgumentBuilder {
-	b.Command = command
-	return b
-}
-func (b *LiteralArgumentBuilder) Requires(fn RequireFn) *LiteralArgumentBuilder {
-	b.ArgumentBuilder.Requires(fn)
-	return b
-}
-func (b *RequiredArgumentBuilder) Requires(fn RequireFn) *RequiredArgumentBuilder {
-	b.ArgumentBuilder.Requires(fn)
-	return b
-}
-func (b *ArgumentBuilder) Requires(fn RequireFn) *ArgumentBuilder {
-	b.Requirement = fn
-	return b
-}
-func (b *LiteralArgumentBuilder) Redirect(target CommandNode) *LiteralArgumentBuilder {
-	b.ArgumentBuilder.Redirect(target)
-	return b
-}
-func (b *RequiredArgumentBuilder) Redirect(target CommandNode) *RequiredArgumentBuilder {
-	b.ArgumentBuilder.Redirect(target)
-	return b
-}
-func (b *ArgumentBuilder) Redirect(target CommandNode) *ArgumentBuilder {
-	return b.forward(target, nil, false)
-}
-func (b *LiteralArgumentBuilder) RedirectWithModifier(target CommandNode, modifier RedirectModifier) *LiteralArgumentBuilder {
-	b.ArgumentBuilder.RedirectWithModifier(target, modifier)
-	return b
-}
-func (b *RequiredArgumentBuilder) RedirectWithModifier(target CommandNode, modifier RedirectModifier) *RequiredArgumentBuilder {
-	b.ArgumentBuilder.RedirectWithModifier(target, modifier)
-	return b
-}
-func (b *ArgumentBuilder) RedirectWithModifier(target CommandNode, modifier RedirectModifier) *ArgumentBuilder {
-	return b.forward(target, modifier, false)
-}
-func (b *LiteralArgumentBuilder) Fork(target CommandNode, modifier RedirectModifier) *LiteralArgumentBuilder {
-	b.ArgumentBuilder.Fork(target, modifier)
-	return b
-}
-func (b *RequiredArgumentBuilder) Fork(target CommandNode, modifier RedirectModifier) *RequiredArgumentBuilder {
-	b.ArgumentBuilder.Fork(target, modifier)
-	return b
-}
-func (b *ArgumentBuilder) Fork(target CommandNode, modifier RedirectModifier) *ArgumentBuilder {
-	return b.forward(target, modifier, true)
-}
-func (b *ArgumentBuilder) forward(target CommandNode, modifier RedirectModifier, fork bool) *ArgumentBuilder {
-	if len(b.Arguments.children) != 0 {
-		return b // cannot forward a node with children
-	}
-	b.Target = target
-	b.Modifier = modifier
-	b.Forks = fork
-	return b
-}
-
-func (b *ArgumentBuilder) build() *Node {
-	n := &Node{
-		requirement: b.Requirement,
-		redirect:    b.Target,
-		command:     b.Command,
-		modifier:    b.Modifier,
-		forks:       b.Forks,
-	}
-	for _, arg := range b.Arguments.children {
-		n.AddChild(arg)
-	}
-	return n
-}
-
-type ArgumentBuilder struct {
-	Arguments   RootCommandNode
-	Command     Command
-	Requirement RequireFn
-	Target      CommandNode
-	Modifier    RedirectModifier
-	Forks       bool
 }
 
 type RequireFn func(context.Context) bool
@@ -243,14 +105,15 @@ func (d *Dispatcher) Execute(parse *ParseResults) error {
 					foundCommand = true
 					modifier := theContext.Modifier
 					if modifier == nil {
-						if theContext == child.Context {
-							next = append(next, child)
-						} else {
-							next = append(next, child.Copy())
-						}
+						next = append(next, child.CopyFor(theContext))
 					} else {
-						if err = modifier.Apply(theContext); err != nil && !forked {
-							return err
+						result, err := modifier.Apply(theContext)
+						if err != nil {
+							if !forked {
+								return err
+							}
+						} else {
+							next = append(next, child.CopyFor(result))
 						}
 					}
 				}
@@ -391,9 +254,22 @@ func (c *CommandContext) Bool(argumentName string) bool {
 	return v
 }
 
-type RedirectModifier interface {
-	Apply(ctx *CommandContext) error
+func (c *CommandContext) CopyFor(ctx context.Context) *CommandContext {
+	if c.Context == ctx {
+		return c
+	}
+	clone := c.Copy()
+	clone.Context = ctx
+	return clone
 }
+
+type RedirectModifier interface {
+	Apply(ctx *CommandContext) (context.Context, error)
+}
+
+type ModifierFunc func(c *CommandContext) (context.Context, error)
+
+func (m ModifierFunc) Apply(c *CommandContext) (context.Context, error) { return m(c) }
 
 type CommandSyntaxError struct {
 	Err error
@@ -513,6 +389,43 @@ func (d *Dispatcher) parseNodes(originalReader *StringReader, node CommandNode, 
 		Reader:  originalReader,
 		Errs:    errs,
 	}
+}
+
+func (d *Dispatcher) Path(target CommandNode) []string {
+	var nodes [][]CommandNode
+	d.addPaths(&d.Root, &nodes, &[]CommandNode{})
+	for _, list := range nodes {
+		if list[len(list)-1] == target {
+			var result []string
+			for _, node := range list {
+				if node != &d.Root {
+					result = append(result, node.Name())
+				}
+			}
+			return result
+		}
+	}
+	return nil
+}
+
+func (d *Dispatcher) addPaths(node CommandNode, result *[][]CommandNode, parents *[]CommandNode) {
+	current := append([]CommandNode{}, *parents...) // copy
+	current = append(current, node)
+	*result = append(*result, current)
+	for _, child := range node.Children() {
+		d.addPaths(child, result, &current)
+	}
+}
+
+func (d *Dispatcher) FindNode(path ...string) CommandNode {
+	var node CommandNode = &d.Root
+	for _, name := range path {
+		node = node.Children()[name]
+		if node == nil {
+			return nil
+		}
+	}
+	return node
 }
 
 func (n *Node) AddChild(nodes ...CommandNode) {
