@@ -153,8 +153,10 @@ func (r *StringReader) ReadQuotedString() (string, error) {
 }
 
 var (
-	ErrReaderExpectedInt = errors.New("reader expected int")
-	ErrReaderInvalidInt  = errors.New("read invalid int")
+	ErrReaderExpectedFloat = errors.New("reader expected float")
+	ErrReaderExpectedInt   = errors.New("reader expected int")
+	ErrReaderInvalidInt    = errors.New("read invalid int")
+	ErrReaderInvalidFloat  = errors.New("read invalid float")
 )
 
 func (r *StringReader) ReadInt() (int, error) {
@@ -181,6 +183,31 @@ func (r *StringReader) ReadInt() (int, error) {
 		}}
 	}
 	return int(i), nil
+}
+func (r *StringReader) ReadFloat64() (float64, error) {
+	start := r.Cursor
+	for r.CanRead() && IsAllowedNumber(r.Peek()) {
+		r.Skip()
+	}
+	number := r.String[start:r.Cursor]
+	if number == "" {
+		return 0, &CommandSyntaxError{Err: &ReaderError{
+			Err:    ErrReaderExpectedFloat,
+			Reader: r,
+		}}
+	}
+	f, err := strconv.ParseFloat(number, 64)
+	if err != nil {
+		r.Cursor = start
+		return 0, &CommandSyntaxError{Err: &ReaderError{
+			Err: &ReaderInvalidValueError{
+				Value: number,
+				Err:   fmt.Errorf("%w (%q): %v", ErrReaderInvalidFloat, number, err),
+			},
+			Reader: r,
+		}}
+	}
+	return f, nil
 }
 
 func (r *StringReader) Remaining() string { return r.String[r.Cursor:] }
