@@ -133,7 +133,7 @@ func TestDispatcher_ParseIncompleteLiteral(t *testing.T) {
 	d.Register(Literal("foo").Then(Literal("bar")))
 
 	parse := d.Parse(context.TODO(), "foo ")
-	require.Equal(t, " ", parse.Reader.remaining())
+	require.Equal(t, " ", parse.Reader.Remaining())
 	require.Len(t, parse.Context.Nodes, 1)
 }
 
@@ -142,7 +142,7 @@ func TestDispatcher_ParseIncompleteArgument(t *testing.T) {
 	d.Register(Literal("foo").Then(Argument("bar", Int)))
 
 	parse := d.Parse(context.TODO(), "foo ")
-	require.Equal(t, " ", parse.Reader.remaining())
+	require.Equal(t, " ", parse.Reader.Remaining())
 	require.Len(t, parse.Context.Nodes, 1)
 }
 
@@ -184,14 +184,14 @@ func TestDispatcher_Execute_RedirectMultipleTimes(t *testing.T) {
 	const input = "redirected redirected actual"
 
 	parse := d.Parse(context.TODO(), input)
-	require.Equal(t, parse.Context.Range.get(input), "redirected")
+	require.Equal(t, parse.Context.Range.Get(input), "redirected")
 	require.Len(t, parse.Context.Nodes, 1)
 	require.Equal(t, parse.Context.RootNode, &d.Root)
 	require.Equal(t, parse.Context.Nodes[0].Node, redirectNode)
 
 	child1 := parse.Context.Child
 	require.NotNil(t, child1)
-	require.Equal(t, child1.Range.get(input), "redirected")
+	require.Equal(t, child1.Range.Get(input), "redirected")
 	require.Len(t, child1.Nodes, 1)
 	require.Equal(t, &d.Root, child1.RootNode)
 	require.Equal(t, child1.Range, *child1.Nodes[0].Range)
@@ -199,7 +199,7 @@ func TestDispatcher_Execute_RedirectMultipleTimes(t *testing.T) {
 
 	child2 := child1.Child
 	require.NotNil(t, child2)
-	require.Equal(t, "actual", child2.Range.get(input))
+	require.Equal(t, "actual", child2.Range.Get(input))
 	require.Len(t, child2.Nodes, 1)
 	require.Equal(t, &d.Root, child2.RootNode)
 	require.Equal(t, *child2.Nodes[0].Range, child2.Range)
@@ -223,7 +223,7 @@ func TestDispatcher_Execute_Redirected(t *testing.T) {
 
 	const input = "redirected actual"
 	parse := d.Parse(context.TODO(), input)
-	require.Equal(t, "redirected", parse.Context.Range.get(input))
+	require.Equal(t, "redirected", parse.Context.Range.Get(input))
 	require.Len(t, parse.Context.Nodes, 1)
 	require.Equal(t, &d.Root, parse.Context.RootNode)
 	require.Equal(t, parse.Context.Range, *parse.Context.Nodes[0].Range)
@@ -231,7 +231,7 @@ func TestDispatcher_Execute_Redirected(t *testing.T) {
 
 	parent := parse.Context.Child
 	require.NotNil(t, parent)
-	require.Equal(t, "actual", parent.Range.get(input))
+	require.Equal(t, "actual", parent.Range.Get(input))
 	require.Len(t, parse.Context.Nodes, 1)
 	require.Equal(t, &d.Root, parse.Context.RootNode)
 	require.Equal(t, parent.Range, *parent.Nodes[0].Range)

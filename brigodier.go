@@ -4,10 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math"
 	"sort"
-	"strconv"
-	"strings"
 )
 
 const (
@@ -71,7 +68,7 @@ var (
 )
 
 func (d *Dispatcher) Execute(parse *ParseResults) error {
-	if parse.Reader.canRead() {
+	if parse.Reader.CanRead() {
 		if len(parse.Errs) == 1 {
 			return parse.firstErr()
 		} else if parse.Context.Range.IsEmpty() {
@@ -195,7 +192,7 @@ func (c *CommandContext) withNode(node CommandNode, r *StringRange) {
 		Node:  node,
 		Range: r,
 	})
-	c.Range = *encompassingRange(&c.Range, r)
+	c.Range = *EncompassingRange(&c.Range, r)
 	c.Modifier = node.RedirectModifier()
 	c.Forks = node.IsFork()
 }
@@ -314,7 +311,7 @@ func (d *Dispatcher) parseNodes(originalReader *StringReader, node CommandNode, 
 		}
 
 		err = child.Parse(ctx, rd)
-		if err == nil && rd.canRead() && rd.peek() != ArgumentSeparator {
+		if err == nil && rd.CanRead() && rd.Peek() != ArgumentSeparator {
 			err = &CommandSyntaxError{Err: &ReaderError{
 				Err:    ErrDispatcherExpectedArgumentSeparator,
 				Reader: rd,
@@ -332,8 +329,8 @@ func (d *Dispatcher) parseNodes(originalReader *StringReader, node CommandNode, 
 		if redirect == nil {
 			canRead = 2
 		}
-		if rd.canReadLen(canRead) {
-			rd.skip()
+		if rd.CanReadLen(canRead) {
+			rd.Skip()
 			if redirect != nil {
 				childCtx := &CommandContext{
 					Context:  ctx,
@@ -366,10 +363,10 @@ func (d *Dispatcher) parseNodes(originalReader *StringReader, node CommandNode, 
 			sort.Slice(potentials, func(i, j int) bool {
 				a := potentials[i]
 				b := potentials[j]
-				if !a.Reader.canRead() && b.Reader.canRead() {
+				if !a.Reader.CanRead() && b.Reader.CanRead() {
 					return true
 				}
-				if a.Reader.canRead() && !b.Reader.canRead() {
+				if a.Reader.CanRead() && !b.Reader.CanRead() {
 					return false
 				}
 				if len(a.Errs) == 0 && len(b.Errs) != 0 {
@@ -458,8 +455,8 @@ func (n *Node) AddChild(nodes ...CommandNode) {
 func (n *Node) RelevantNodes(input *StringReader) []CommandNode {
 	if len(n.literals) != 0 {
 		cursor := input.Cursor
-		for input.canRead() && input.peek() != ArgumentSeparator {
-			input.skip()
+		for input.CanRead() && input.Peek() != ArgumentSeparator {
+			input.Skip()
 		}
 		text := input.String[cursor:input.Cursor]
 		input.Cursor = cursor
@@ -583,11 +580,11 @@ func (n *LiteralCommandNode) Parse(ctx *CommandContext, rd *StringReader) error 
 
 func (n *LiteralCommandNode) parse(rd *StringReader) int {
 	start := rd.Cursor
-	if rd.canReadLen(len(n.Literal)) {
+	if rd.CanReadLen(len(n.Literal)) {
 		end := start + len(n.Literal)
 		if rd.String[start:end] == n.Literal {
 			rd.Cursor = end
-			if !rd.canRead() || rd.peek() == ArgumentSeparator {
+			if !rd.CanRead() || rd.Peek() == ArgumentSeparator {
 				return end
 			}
 			rd.Cursor = start
@@ -637,289 +634,6 @@ type ParsedArgument struct {
 	Result interface{}
 }
 
-type ArgumentType interface {
-	Parse(rd *StringReader) (interface{}, error)
-	String() string // The name of the type.
-}
-
-type ArgumentTypeFuncs struct {
-	Name    string
-	ParseFn func(rd *StringReader) (interface{}, error)
-}
-
-func (t *ArgumentTypeFuncs) Parse(rd *StringReader) (interface{}, error) { return t.ParseFn(rd) }
-func (t *ArgumentTypeFuncs) String() string                              { return t.Name }
-
-var (
-	Bool ArgumentType
-	Int  ArgumentType
-)
-
-func init() {
-	Bool = &ArgumentTypeFuncs{
-		Name:    "bool",
-		ParseFn: func(rd *StringReader) (interface{}, error) { return rd.readBool() },
-	}
-	Int = &IntegerArgumentType{
-		Min: math.MinInt32,
-		Max: math.MaxInt32,
-	}
-}
-
-type IntegerArgumentType struct{ Min, Max int }
-
-var (
-	ErrArgumentIntegerTooLow  = errors.New("integer too low")
-	ErrArgumentIntegerTooHigh = errors.New("integer too high")
-)
-
-func (t *IntegerArgumentType) Parse(rd *StringReader) (interface{}, error) {
-	start := rd.Cursor
-	result, err := rd.readInt()
-	if err != nil {
-		return nil, err
-	}
-	if result < t.Min {
-		rd.Cursor = start
-		return nil, &CommandSyntaxError{Err: fmt.Errorf("%w (%d < %d)",
-			ErrArgumentIntegerTooLow, result, t.Min)}
-	}
-	if result > t.Max {
-		rd.Cursor = start
-		return nil, &CommandSyntaxError{Err: fmt.Errorf("%w (%d > %d)",
-			ErrArgumentIntegerTooHigh, result, t.Max)}
-	}
-	return result, nil
-}
-
-func (t *IntegerArgumentType) String() string { return "int" }
-
 type LiteralArgument struct {
 	Node
-}
-
-type StringReader struct {
-	Cursor int
-	String string
-}
-
-type ReaderError struct {
-	Err    error
-	Reader *StringReader
-}
-
-type ReaderInvalidValueError struct {
-	Type  ArgumentType // The expected value type
-	Value string
-
-	Err error // Optional underlying error
-}
-
-func (e *ReaderInvalidValueError) Unwrap() error { return e.Err }
-func (e *ReaderInvalidValueError) Error() string {
-	if e.Err != nil {
-		return e.Err.Error()
-	}
-	return fmt.Sprintf("read invalid value %q for type %q", e.Value, e.Type)
-}
-
-var (
-	ErrReaderExpectedBool = errors.New("reader expected bool")
-)
-
-func (e *ReaderError) Unwrap() error { return e.Err }
-func (e *ReaderError) Error() string { return e.Err.Error() }
-
-func (r *StringReader) canRead() bool              { return r.canReadLen(1) }
-func (r *StringReader) canReadLen(length int) bool { return r.Cursor+length <= len(r.String) }
-func (r *StringReader) peek() rune                 { return rune(r.String[r.Cursor]) }
-func (r *StringReader) skip()                      { r.Cursor++ }
-func (r *StringReader) readBool() (bool, error) {
-	start := r.Cursor
-	value, err := r.readString()
-	if err != nil {
-		return false, err
-	}
-	if len(value) == 0 {
-		return false, &CommandSyntaxError{Err: &ReaderError{
-			Err:    ErrReaderExpectedBool,
-			Reader: r,
-		}}
-	}
-	if strings.EqualFold(value, "true") {
-		return true, nil
-	} else if strings.EqualFold(value, "false") {
-		return false, nil
-	}
-	r.Cursor = start
-	return false, &CommandSyntaxError{Err: &ReaderError{
-		Err: &ReaderInvalidValueError{
-			Type:  Bool,
-			Value: value,
-		},
-		Reader: r,
-	}}
-}
-
-func (r *StringReader) read() rune {
-	c := r.String[r.Cursor]
-	r.Cursor++
-	return rune(c)
-}
-func (r *StringReader) readString() (string, error) {
-	if !r.canRead() {
-		return "", nil
-	}
-	next := r.peek()
-	if isQuotedStringStart(next) {
-		r.skip()
-		return r.readStringUntil(next)
-	}
-	return r.readUnquotedString(), nil
-}
-
-var (
-	ErrReaderInvalidEscape        = errors.New("read invalid escape character")
-	ErrReaderExpectedEndOfQuote   = errors.New("reader expected end of quote")
-	ErrReaderExpectedStartOfQuote = errors.New("reader expected start of quote")
-)
-
-func (r *StringReader) readStringUntil(terminator rune) (string, error) {
-	var (
-		result  strings.Builder
-		escaped = false
-	)
-	for r.canRead() {
-		c := r.read()
-		if escaped {
-			if c == terminator || c == SyntaxEscape {
-				result.WriteRune(c)
-				escaped = false
-			} else {
-				r.Cursor = r.Cursor - 1
-				return "", &CommandSyntaxError{Err: &ReaderError{
-					Err: &ReaderInvalidValueError{
-						Value: string(c),
-						Err:   ErrReaderInvalidEscape,
-					},
-					Reader: r,
-				}}
-			}
-		} else if c == SyntaxEscape {
-			escaped = true
-		} else if c == terminator {
-			return result.String(), nil
-		} else {
-			result.WriteRune(c)
-		}
-	}
-
-	return "", &CommandSyntaxError{Err: &ReaderError{
-		Err:    ErrReaderExpectedEndOfQuote,
-		Reader: r,
-	}}
-}
-
-func (r *StringReader) readUnquotedString() string {
-	start := r.Cursor
-	for r.canRead() && isAllowedInUnquotedString(r.peek()) {
-		r.skip()
-	}
-	return r.String[start:r.Cursor]
-}
-
-func (r *StringReader) readQuotedString() (string, error) {
-	if !r.canRead() {
-		return "", nil
-	}
-	next := r.peek()
-	if !isQuotedStringStart(next) {
-		return "", &CommandSyntaxError{Err: &ReaderError{
-			Err:    ErrReaderExpectedStartOfQuote,
-			Reader: r,
-		}}
-	}
-	r.skip()
-	return r.readStringUntil(next)
-}
-
-var (
-	ErrReaderExpectedInt = errors.New("reader expected int")
-	ErrReaderInvalidInt  = errors.New("read invalid int")
-)
-
-func (r *StringReader) readInt() (int, error) {
-	start := r.Cursor
-	for r.canRead() && isAllowedNumber(r.peek()) {
-		r.skip()
-	}
-	number := r.String[start:r.Cursor]
-	if number == "" {
-		return 0, &CommandSyntaxError{Err: &ReaderError{
-			Err:    ErrReaderExpectedInt,
-			Reader: r,
-		}}
-	}
-	i, err := strconv.ParseInt(number, 0, 32)
-	if err != nil {
-		r.Cursor = start
-		return 0, &CommandSyntaxError{Err: &ReaderInvalidValueError{
-			Value: number,
-			Err:   fmt.Errorf("%w (%q): %v", ErrReaderInvalidInt, number, err),
-		}}
-	}
-	return int(i), nil
-}
-
-func (r *StringReader) remaining() string { return r.String[r.Cursor:] }
-
-const (
-	SyntaxDoubleQuote = '"'
-	SyntaxSingleQuote = '\''
-	SyntaxEscape      = '\\'
-)
-
-func isAllowedNumber(c rune) bool { return c >= '0' && c <= '9' || c == '.' || c == '-' }
-
-func isQuotedStringStart(c rune) bool {
-	return c == SyntaxDoubleQuote || c == SyntaxSingleQuote
-}
-func isAllowedInUnquotedString(c rune) bool {
-	return c >= '0' && c <= '9' ||
-		c >= 'A' && c <= 'Z' ||
-		c >= 'a' && c <= 'z' ||
-		c == '_' || c == '-' ||
-		c == '.' || c == '+'
-}
-
-type StringRange struct{ Start, End int }
-
-func (r *StringRange) IsEmpty() bool {
-	return r.Start == r.End
-}
-
-func (r StringRange) Copy() StringRange { return r }
-
-func (r *StringRange) get(s string) string {
-	return s[r.Start:r.End]
-}
-
-func encompassingRange(r1, r2 *StringRange) *StringRange {
-	return &StringRange{
-		Start: min(r1.Start, r2.Start),
-		End:   max(r1.End, r2.End),
-	}
-}
-
-func min(x, y int) int {
-	if x < y {
-		return x
-	}
-	return y
-}
-func max(x, y int) int {
-	if x > y {
-		return x
-	}
-	return y
 }
