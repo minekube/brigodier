@@ -228,29 +228,6 @@ func (c *CommandContext) Copy() *CommandContext {
 	}
 }
 
-func (c *CommandContext) Int(argumentName string) int {
-	if c.Arguments == nil {
-		return 0
-	}
-	r, ok := c.Arguments[argumentName]
-	if !ok {
-		return 0
-	}
-	v, _ := r.Result.(int)
-	return v
-}
-func (c *CommandContext) Bool(argumentName string) bool {
-	if c.Arguments == nil {
-		return false
-	}
-	r, ok := c.Arguments[argumentName]
-	if !ok {
-		return false
-	}
-	v, _ := r.Result.(bool)
-	return v
-}
-
 func (c *CommandContext) CopyFor(ctx context.Context) *CommandContext {
 	if c.Context == ctx {
 		return c
