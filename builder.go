@@ -13,8 +13,9 @@ type (
 		ArgumentBuilder
 	}
 	RequiredArgumentBuilder struct {
-		Name string
-		Type ArgumentType
+		Name                string
+		Type                ArgumentType
+		SuggestionsProvider SuggestionProvider // Optional
 		ArgumentBuilder
 	}
 )
@@ -69,12 +70,17 @@ func (b *RequiredArgumentBuilder) then()              {}
 func (b *RequiredArgumentBuilder) build() CommandNode { return b.Build() }
 func (b *RequiredArgumentBuilder) Build() *ArgumentCommandNode {
 	return &ArgumentCommandNode{
-		Node:    *b.ArgumentBuilder.build(),
-		name:    b.Name,
-		argType: b.Type,
+		Node:              *b.ArgumentBuilder.build(),
+		name:              b.Name,
+		argType:           b.Type,
+		customSuggestions: b.SuggestionsProvider,
 	}
 }
 
+func (b *RequiredArgumentBuilder) Suggests(provider SuggestionProvider) *RequiredArgumentBuilder {
+	b.SuggestionsProvider = provider
+	return b
+}
 func (b *LiteralArgumentBuilder) Executes(command Command) *LiteralArgumentBuilder {
 	b.ArgumentBuilder.Executes(command)
 	return b

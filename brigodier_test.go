@@ -18,7 +18,7 @@ func TestDispatcher_ParseExecute(t *testing.T) {
 		return nil
 	})))
 
-	require.NoError(t, d.ParseExecute(context.TODO(), cmd))
+	require.NoError(t, d.Do(context.TODO(), cmd))
 	require.Equal(t, cmd, input)
 }
 
@@ -31,8 +31,8 @@ func TestDispatcher_MergeCommands(t *testing.T) {
 	d.Register(Literal("base").Then(Literal("foo").Executes(cmdFn)))
 	d.Register(Literal("base").Then(Literal("bar").Executes(cmdFn)))
 
-	require.NoError(t, d.ParseExecute(context.TODO(), "base foo"))
-	require.NoError(t, d.ParseExecute(context.TODO(), "base bar"))
+	require.NoError(t, d.Do(context.TODO(), "base foo"))
+	require.NoError(t, d.Do(context.TODO(), "base bar"))
 	require.Equal(t, 2, times)
 }
 
@@ -42,7 +42,7 @@ func TestDispatcher_Execute_UnknownCommand(t *testing.T) {
 	d.Register(Literal("baz"))
 
 	var err *ReaderError
-	require.True(t, errors.As(d.ParseExecute(context.TODO(), "foo"), &err))
+	require.True(t, errors.As(d.Do(context.TODO(), "foo"), &err))
 	require.ErrorIs(t, err, ErrDispatcherUnknownCommand)
 	require.Equal(t, 0, err.Reader.Cursor)
 }
@@ -56,7 +56,7 @@ func TestDispatcher_Execute_UnknownSubCommand(t *testing.T) {
 	d.Register(Literal("foo").Executes(cmdFn))
 
 	var err *ReaderError
-	require.True(t, errors.As(d.ParseExecute(context.TODO(), "foo bar"), &err))
+	require.True(t, errors.As(d.Do(context.TODO(), "foo bar"), &err))
 	require.ErrorIs(t, err, ErrDispatcherUnknownArgument)
 	require.Equal(t, 0, times)
 	require.Equal(t, 4, err.Reader.Cursor)
@@ -67,7 +67,7 @@ func TestDispatcher_Execute_ImpermissibleCommand(t *testing.T) {
 	d.Register(Literal("foo").Requires(func(context.Context) bool { return false }))
 
 	var err *ReaderError
-	require.True(t, errors.As(d.ParseExecute(context.TODO(), "foo"), &err))
+	require.True(t, errors.As(d.Do(context.TODO(), "foo"), &err))
 	require.ErrorIs(t, err, ErrDispatcherUnknownCommand)
 	require.Equal(t, 0, err.Reader.Cursor)
 }
@@ -77,7 +77,7 @@ func TestDispatcher_Execute_EmptyCommand(t *testing.T) {
 	d.Register(Literal(""))
 
 	var err *ReaderError
-	require.True(t, errors.As(d.ParseExecute(context.TODO(), ""), &err))
+	require.True(t, errors.As(d.Do(context.TODO(), ""), &err))
 	require.ErrorIs(t, err, ErrDispatcherUnknownCommand)
 	require.Equal(t, 0, err.Reader.Cursor)
 }
@@ -91,7 +91,7 @@ func TestDispatcher_Execute_IncorrectLiteral(t *testing.T) {
 	d.Register(Literal("foo").Executes(cmdFn).Then(Literal("bar")))
 
 	var err *ReaderError
-	require.True(t, errors.As(d.ParseExecute(context.TODO(), "foo baz"), &err))
+	require.True(t, errors.As(d.Do(context.TODO(), "foo baz"), &err))
 	require.ErrorIs(t, err, ErrDispatcherUnknownArgument)
 	require.Equal(t, 0, times)
 	require.Equal(t, 4, err.Reader.Cursor)
@@ -107,7 +107,7 @@ func TestDispatcher_Execute_AmbiguousIncorrectArgument(t *testing.T) {
 	)
 
 	var err *ReaderError
-	require.True(t, errors.As(d.ParseExecute(context.TODO(), "foo unknown"), &err))
+	require.True(t, errors.As(d.Do(context.TODO(), "foo unknown"), &err))
 	require.ErrorIs(t, err, ErrDispatcherUnknownArgument)
 	require.Equal(t, 4, err.Reader.Cursor)
 }
@@ -124,7 +124,7 @@ func TestDispatcher_Execute_Subcommand(t *testing.T) {
 		Literal("c"),
 	).Executes(cmdFn))
 
-	require.NoError(t, d.ParseExecute(context.TODO(), "foo ="))
+	require.NoError(t, d.Do(context.TODO(), "foo ="))
 	require.Equal(t, "foo =", input)
 }
 
@@ -168,7 +168,7 @@ func TestDispatcher_Execute_AmbiguousParentSubcommandViaRedirect(t *testing.T) {
 
 	d.Register(Literal("redirect").Redirect(r))
 
-	require.NoError(t, d.ParseExecute(context.TODO(), "redirect 1 2"))
+	require.NoError(t, d.Do(context.TODO(), "redirect 1 2"))
 	require.False(t, c1)
 	require.True(t, c2)
 }
@@ -247,7 +247,7 @@ func TestDispatcher_Execute_OrphanedSubcommand(t *testing.T) {
 	d.Register(Literal("foo").Then(Argument("bar", Int)).Executes(cmd))
 
 	var err *ReaderError
-	require.True(t, errors.As(d.ParseExecute(context.TODO(), "foo 5"), &err))
+	require.True(t, errors.As(d.Do(context.TODO(), "foo 5"), &err))
 	require.ErrorIs(t, err, ErrDispatcherUnknownCommand)
 	require.Equal(t, 5, err.Reader.Cursor)
 }
@@ -260,7 +260,7 @@ func TestDispatcher_Execute_invalidOther(t *testing.T) {
 	d.Register(Literal("w").Executes(wrongCmd))
 	d.Register(Literal("world").Executes(cmd))
 
-	require.NoError(t, d.ParseExecute(context.TODO(), "world"))
+	require.NoError(t, d.Do(context.TODO(), "world"))
 	require.Equal(t, 1, i)
 }
 
@@ -270,7 +270,7 @@ func TestDispatcher_Execute_noSpaceSeparator(t *testing.T) {
 	d.Register(Literal("foo").Then(Argument("bar", Int)).Executes(cmd))
 
 	var err *ReaderError
-	require.True(t, errors.As(d.ParseExecute(context.TODO(), "foo$"), &err))
+	require.True(t, errors.As(d.Do(context.TODO(), "foo$"), &err))
 	require.ErrorIs(t, err, ErrDispatcherUnknownCommand)
 	require.Equal(t, 0, err.Reader.Cursor)
 }
@@ -281,7 +281,7 @@ func TestDispatcher_Execute_InvalidSubcommand(t *testing.T) {
 	d.Register(Literal("foo").Then(Argument("bar", Int)).Executes(cmd))
 
 	var err *ReaderError
-	require.True(t, errors.As(d.ParseExecute(context.TODO(), "foo bar"), &err))
+	require.True(t, errors.As(d.Do(context.TODO(), "foo bar"), &err))
 	require.ErrorIs(t, err, ErrReaderExpectedInt)
 	require.Equal(t, 4, err.Reader.Cursor)
 }

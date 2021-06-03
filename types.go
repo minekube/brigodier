@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"strings"
 )
 
 var (
@@ -24,8 +25,9 @@ type ArgumentType interface {
 }
 
 type ArgumentTypeFuncs struct {
-	Name    string
-	ParseFn func(rd *StringReader) (interface{}, error)
+	Name          string
+	ParseFn       func(rd *StringReader) (interface{}, error)
+	SuggestionsFn func(ctx *CommandContext, builder *SuggestionsBuilder) *Suggestions
 }
 
 func (t *ArgumentTypeFuncs) Parse(rd *StringReader) (interface{}, error) { return t.ParseFn(rd) }
@@ -35,6 +37,14 @@ func init() {
 	Bool = &ArgumentTypeFuncs{
 		Name:    "bool",
 		ParseFn: func(rd *StringReader) (interface{}, error) { return rd.ReadBool() },
+		SuggestionsFn: func(ctx *CommandContext, builder *SuggestionsBuilder) *Suggestions {
+			if strings.HasPrefix("true", builder.RemainingLowerCase) {
+				builder.Suggest("true")
+			} else if strings.HasPrefix("false", builder.RemainingLowerCase) {
+				builder.Suggest("false")
+			}
+			return builder.Build()
+		},
 	}
 	Int = &IntegerArgumentType{
 		Min: math.MinInt32,

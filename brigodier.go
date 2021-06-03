@@ -254,14 +254,19 @@ func (e *CommandSyntaxError) Error() string {
 	return e.Err.Error()
 }
 
-func (d *Dispatcher) ParseExecute(ctx context.Context, command string) error {
+func (d *Dispatcher) Do(ctx context.Context, command string) error {
 	return d.Execute(d.Parse(ctx, command))
 }
 
 func (d *Dispatcher) Parse(ctx context.Context, command string) *ParseResults {
-	return d.parseNodes(&StringReader{String: command}, &d.Root, &CommandContext{
+	return d.ParseReader(ctx, &StringReader{String: command})
+}
+func (d *Dispatcher) ParseReader(ctx context.Context, command *StringReader) *ParseResults {
+	return d.parseNodes(command, &d.Root, &CommandContext{
 		Context:  ctx,
 		RootNode: &d.Root,
+		Range:    StringRange{Start: command.Cursor, End: command.Cursor},
+		cursor:   command.Cursor,
 	})
 }
 
@@ -531,6 +536,8 @@ func (r *RootCommandNode) Parse(*CommandContext, *StringReader) error { return n
 type LiteralCommandNode struct {
 	Node
 	Literal string
+
+	literalLowerCase string
 }
 
 type IncorrectLiteralError struct {
@@ -572,8 +579,9 @@ func (n *LiteralCommandNode) parse(rd *StringReader) int {
 
 type ArgumentCommandNode struct {
 	Node
-	name    string
-	argType ArgumentType
+	name              string
+	argType           ArgumentType
+	customSuggestions SuggestionProvider // Optional
 }
 
 func (a *ArgumentCommandNode) Parse(ctx *CommandContext, rd *StringReader) error {
@@ -594,8 +602,9 @@ func (a *ArgumentCommandNode) Parse(ctx *CommandContext, rd *StringReader) error
 func (a *ArgumentCommandNode) String() string {
 	return fmt.Sprintf("<argument %s:%s>", a.name, a.argType)
 }
-func (a *ArgumentCommandNode) Name() string       { return a.name }
-func (a *ArgumentCommandNode) Type() ArgumentType { return a.argType }
+func (a *ArgumentCommandNode) Name() string                          { return a.name }
+func (a *ArgumentCommandNode) Type() ArgumentType                    { return a.argType }
+func (a *ArgumentCommandNode) CustomSuggestions() SuggestionProvider { return a.customSuggestions }
 
 const (
 	UsageArgumentOpen  rune = '['
