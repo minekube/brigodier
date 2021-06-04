@@ -32,10 +32,13 @@ func (d *Dispatcher) Register(command *LiteralArgumentBuilder) *LiteralCommandNo
 	return b
 }
 
+// RequireFn is the function used for CommandNode.CanUse.
 type RequireFn func(context.Context) bool
 
 var (
-	ErrDispatcherUnknownCommand  = errors.New("dispatcher: unknown command")
+	// ErrDispatcherUnknownCommand indicates that an input command was not found.
+	ErrDispatcherUnknownCommand = errors.New("dispatcher: unknown command")
+	// ErrDispatcherUnknownArgument indicates that the argument of an input command was not found.
 	ErrDispatcherUnknownArgument = errors.New("dispatcher: unknown argument")
 )
 

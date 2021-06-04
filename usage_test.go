@@ -60,6 +60,12 @@ func get(d *Dispatcher, command string) CommandNode {
 	}
 	return nil
 }
+func getR(d *Dispatcher, command *StringReader) CommandNode {
+	for _, n := range d.ParseReader(context.TODO(), command).Context.Nodes {
+		return n.Node
+	}
+	return nil
+}
 
 func TestDispatcher_AllUsage_NoCommands(t *testing.T) {
 	var d Dispatcher
@@ -120,8 +126,8 @@ func testSmartUsage(t testing.TB, results CommandNodeStringMap, expected ...expe
 
 	var i int
 	results.Range(func(key CommandNode, value string) bool {
-		require.Equal(t, expected[i].node, key)
-		require.Equal(t, expected[i].usage, value)
+		require.Equal(t, expected[i].usage, value, "%s is not %s", expected[i].usage, value)
+		require.NotNil(t, expected[i].node)
 		i++
 		return true
 	})
@@ -146,14 +152,26 @@ func TestDispatcher_SmartUsage_Root(t *testing.T) {
 	}...)
 }
 
-func TestDispatcher_SmartUsage_h(t *testing.T) {
+func TestDispatcher_SmartUsage_H(t *testing.T) {
 	d := new(Dispatcher)
 	setupUsage(d)
 	results := d.SmartUsage(context.TODO(), get(d, "h"))
 
 	testSmartUsage(t, results, []expectedSmartUsage{
-		{get(d, "h 1"), "h [1] i"},
-		{get(d, "h 2"), "h [2] i ii"},
-		{get(d, "h 3"), "h [3]"},
+		{get(d, "h 1"), "[1] i"},
+		{get(d, "h 2"), "[2] i ii"},
+		{get(d, "h 3"), "[3]"},
+	}...)
+}
+
+func TestDispatcher_SmartUsage_OffsetH(t *testing.T) {
+	d := new(Dispatcher)
+	setupUsage(d)
+	results := d.SmartUsage(context.TODO(), getR(d, inputWithOffset("/|/|/h", 5)))
+
+	testSmartUsage(t, results, []expectedSmartUsage{
+		{get(d, "h 1"), "[1] i"},
+		{get(d, "h 2"), "[2] i ii"},
+		{get(d, "h 3"), "[3]"},
 	}...)
 }

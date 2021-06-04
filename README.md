@@ -26,7 +26,7 @@ go get -u go.minekube.com/brigodier
 
 ## Usage
 
-At the heart of Brigodier, you need a `CommandDispatcher`.
+At the heart of Brigodier, you need a `Dispatcher`.
 
 A command dispatcher holds a "command tree", which is a series of
 `CommandNode`s that represent the various possible syntax options that form a valid command.
