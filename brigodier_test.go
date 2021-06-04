@@ -3,9 +3,27 @@ package brigodier
 import (
 	"context"
 	"errors"
+	"fmt"
 	"github.com/stretchr/testify/require"
 	"testing"
 )
+
+func ExampleDispatcher_Do() {
+	var d Dispatcher
+
+	d.Register(
+		Literal("foo").Then(
+			Argument("bar", Int).
+				Executes(CommandFunc(func(c *CommandContext) error {
+					fmt.Println("Bar is", c.Int("bar"))
+					return nil
+				})),
+		).Executes(CommandFunc(func(c *CommandContext) error {
+			fmt.Println("Called foo with no arguments")
+			return nil
+		})),
+	)
+}
 
 func TestDispatcher_ParseExecute(t *testing.T) {
 	const cmd = `base`
