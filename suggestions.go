@@ -106,9 +106,9 @@ func (d *Dispatcher) CompletionSuggestionsCursor(parse *ParseResults, cursor int
 	truncatedInput := fullInput[:cursor]
 	truncatedInputLowerCase := strings.ToLower(truncatedInput)
 	suggestions := make([]*Suggestions, 0, len(parent.Children()))
-	for _, node := range parent.Children() {
+	parent.ChildrenOrdered().Range(func(_ string, node CommandNode) bool {
 		if !CanProvideSuggestions(node) {
-			continue
+			return true
 		}
 		suggestions = append(suggestions, ProvideSuggestions(node, ctx.build(truncatedInput), &SuggestionsBuilder{
 			Input:              truncatedInput,
@@ -117,7 +117,8 @@ func (d *Dispatcher) CompletionSuggestionsCursor(parse *ParseResults, cursor int
 			Remaining:          truncatedInput[start:],
 			RemainingLowerCase: truncatedInputLowerCase[start:],
 		}))
-	}
+		return true
+	})
 
 	return MergeSuggestions(fullInput, suggestions), nil
 }
