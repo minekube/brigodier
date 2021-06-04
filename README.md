@@ -65,7 +65,7 @@ This snippet registers two "commands": `foo` and `foo <bar>`.
 It is also common to refer to the `<bar>` as a "subcommand" of `foo`, as it's a child node.
 
 At the start of the tree is a "root node", and it **must** have `LiteralCommandNode`s as children.
-Here, we register one command under the root: `literal("foo")`, which means "the user must type the literal string 'foo'".
+Here, we register one command under the root: `Literal("foo")`, which means "the user must type the literal string 'foo'".
 
 Under that is two extra definitions: a child node for possible further evaluation, or an `executes` block
 if the user input stops here.
@@ -87,10 +87,7 @@ When a command function runs, it can access these arguments in the context provi
 So, we've registered some commands, and now we're ready to take in user input.
 If you're in a rush, you can just call `dispatcher.Execute(ctx, "foo 123")` and call it a day.
 
-The result of `execute` is an integer that was returned from an evaluated command.
-The meaning of this integer depends on the command, and will typically not be useful to programmers.
-
-The `context` can be used to track users/players/etc and
+Go's context.Context can be used to track users/players/etc and
 will be provided to the command to give context on what's happening (e.g., who has run the command).
 
 If the command failed or could not parse, some form of `CommandSyntaxError` will be returned,
@@ -119,7 +116,7 @@ err := dispatcher.Do(ctx, "foo 123")
 
 ### Inspecting a command
 
-If you `parse` some input, you can find out what it will perform (if anything) and provide
+If you `Parse` some input, you can find out what it will perform (if anything) and provide
 hints to the user safely and immediately.
 
 The parse will never fail, and the `ParseResults` it returns will contain a *possible* context that a command may be called with
