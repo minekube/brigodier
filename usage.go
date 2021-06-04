@@ -58,11 +58,16 @@ func (d *Dispatcher) allUsage(ctx context.Context, node CommandNode, result []st
 }
 
 const (
-	UsageOptionalOpen  rune = '['
+	// UsageOptionalOpen is the open rune for an optional argument.
+	UsageOptionalOpen rune = '['
+	// UsageOptionalClose is the close rune for an optional argument.
 	UsageOptionalClose rune = ']'
-	UsageRequiredOpen  rune = '('
+	// UsageRequiredOpen is the open rune for a required argument.
+	UsageRequiredOpen rune = '('
+	// UsageRequiredClose is the close rune for a required argument.
 	UsageRequiredClose rune = ')'
-	UsageOr            rune = '|'
+	// UsageOr is the or rune splitting multiple argument options.
+	UsageOr rune = '|'
 )
 
 // SmartUsage gets the possible executable commands from a specified node.

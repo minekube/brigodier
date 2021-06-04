@@ -248,10 +248,10 @@ func (a *ArgumentCommandNode) Suggestions(ctx *CommandContext, builder *Suggesti
 
 // Suggestions implements SuggestionProvider.
 func (n *LiteralCommandNode) Suggestions(_ *CommandContext, builder *SuggestionsBuilder) *Suggestions {
-	if n.literalLowerCase == "" {
-		n.literalLowerCase = strings.ToLower(n.Literal)
+	if n.cachedLiteralLowerCase == "" {
+		n.cachedLiteralLowerCase = strings.ToLower(n.Literal)
 	}
-	if strings.HasPrefix(n.literalLowerCase, builder.RemainingLowerCase) {
+	if strings.HasPrefix(n.cachedLiteralLowerCase, builder.RemainingLowerCase) {
 		return builder.Suggest(n.Literal).Build()
 	}
 	return emptySuggestions

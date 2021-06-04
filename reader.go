@@ -38,6 +38,7 @@ func (e *ReaderInvalidValueError) Error() string {
 	return fmt.Sprintf("read invalid value %q for type %q", e.Value, e.Type)
 }
 
+// Unwrap implements errors.Unwrap.
 func (e *ReaderError) Unwrap() error { return e.Err }
 func (e *ReaderError) Error() string { return e.Err.Error() }
 
