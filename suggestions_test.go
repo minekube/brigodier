@@ -288,8 +288,8 @@ func TestDispatcher_CompletionSuggestions_Execute_Simulation(t *testing.T) {
 	var d Dispatcher
 	execute := d.Register(Literal("execute"))
 	d.Register(Literal("execute").Then(
-		Literal("as").Then(Argument("name", StringSingleWord).Redirect(execute)),
-		Literal("store").Then(Argument("name", StringSingleWord).Redirect(execute)),
+		Literal("as").Then(Argument("name", StringWord).Redirect(execute)),
+		Literal("store").Then(Argument("name", StringWord).Redirect(execute)),
 		Literal("run").Executes(CommandFunc(func(c *CommandContext) error { return nil })),
 	))
 
@@ -307,7 +307,7 @@ func TestDispatcher_CompletionSuggestions_Execute_Simulation_Partial(t *testing.
 			Literal("bar").Redirect(execute),
 			Literal("baz").Redirect(execute),
 		),
-		Literal("store").Then(Argument("name", StringSingleWord).Redirect(execute)),
+		Literal("store").Then(Argument("name", StringWord).Redirect(execute)),
 		Literal("run").Executes(CommandFunc(func(c *CommandContext) error { return nil })),
 	))
 

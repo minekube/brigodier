@@ -156,8 +156,9 @@ func (b *ArgumentBuilder) build() *Node {
 		modifier:    b.Modifier,
 		forks:       b.Forks,
 	}
-	for _, arg := range b.Arguments.children {
+	b.Arguments.ChildrenOrdered().Range(func(_ string, arg CommandNode) bool {
 		n.AddChild(arg)
-	}
+		return true
+	})
 	return n
 }

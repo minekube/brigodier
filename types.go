@@ -7,32 +7,41 @@ import (
 	"strings"
 )
 
+// Builtin argument types.
 var (
-	Bool ArgumentType
+	Bool ArgumentType // Bool argument type.
 
-	Int     ArgumentType
-	Int32   = Int
-	Float64 ArgumentType
+	Int     ArgumentType // Int argument type.
+	Int32   = Int        // Int32 is an alias of Int.
+	Float64 ArgumentType // Float64 argument type.
 
-	String             ArgumentType
-	StringSingleWord   ArgumentType
-	StringGreedyPhrase ArgumentType
+	// String argument type is quoted or unquoted.
+	String ArgumentType
+	// StringWord argument type is a single word.
+	StringWord ArgumentType
+	// StringPhrase argument type is phrase.
+	StringPhrase ArgumentType
 )
 
+// ArgumentType is a parsable argument type.
 type ArgumentType interface {
+	// Parse parses the argument from the given reader input.
 	Parse(rd *StringReader) (interface{}, error)
-	String() string // The name of the type.
+	String() string // String returns the name of the type.
 }
 
+// ArgumentTypeFuncs is a convenient struct implementing ArgumentType.
 type ArgumentTypeFuncs struct {
-	Name          string
-	ParseFn       func(rd *StringReader) (interface{}, error)
+	Name    string                                      // The name of the argument type returned by ArgumentType.String.
+	ParseFn func(rd *StringReader) (interface{}, error) // ArgumentType.Parse
+	// Optional suggestions for use with Dispatcher.CompletionSuggestions (ProvideSuggestions).
 	SuggestionsFn func(ctx *CommandContext, builder *SuggestionsBuilder) *Suggestions
 }
 
 func (t *ArgumentTypeFuncs) Parse(rd *StringReader) (interface{}, error) { return t.ParseFn(rd) }
 func (t *ArgumentTypeFuncs) String() string                              { return t.Name }
 
+// Initialize builtin argument types.
 func init() {
 	Bool = &ArgumentTypeFuncs{
 		Name:    "bool",
@@ -55,10 +64,12 @@ func init() {
 		Max: math.MaxFloat64,
 	}
 	String = QuotablePhase
-	StringSingleWord = SingleWord
-	StringGreedyPhrase = GreedyPhrase
+	StringWord = SingleWord
+	StringPhrase = GreedyPhrase
 }
 
+// Int returns the parsed int argument from the command context.
+// It returns the zero-value if not found.
 func (c *CommandContext) Int(argumentName string) int {
 	if c.Arguments == nil {
 		return 0
@@ -70,6 +81,9 @@ func (c *CommandContext) Int(argumentName string) int {
 	v, _ := r.Result.(int)
 	return v
 }
+
+// Bool returns the parsed bool argument from the command context.
+// It returns the zero-value if not found.
 func (c *CommandContext) Bool(argumentName string) bool {
 	if c.Arguments == nil {
 		return false
@@ -81,6 +95,9 @@ func (c *CommandContext) Bool(argumentName string) bool {
 	v, _ := r.Result.(bool)
 	return v
 }
+
+// Float64 returns the parsed float64 argument from the command context.
+// It returns the zero-value if not found.
 func (c *CommandContext) Float64(argumentName string) float64 {
 	if c.Arguments == nil {
 		return 0
@@ -92,6 +109,9 @@ func (c *CommandContext) Float64(argumentName string) float64 {
 	v, _ := r.Result.(float64)
 	return v
 }
+
+// String returns the parsed string argument from the command context.
+// It returns the zero-value if not found.
 func (c *CommandContext) String(argumentName string) string {
 	if c.Arguments == nil {
 		return ""
@@ -104,12 +124,14 @@ func (c *CommandContext) String(argumentName string) string {
 	return v
 }
 
+// StringType is a string ArgumentType.
 type StringType uint8
 
+// Builtin string argument types.
 const (
-	SingleWord StringType = iota
-	QuotablePhase
-	GreedyPhrase
+	SingleWord    StringType = iota // A single-word string.
+	QuotablePhase                   // A quotable phrase string.
+	GreedyPhrase                    // A "greedy" string phrase.
 )
 
 func (t StringType) String() string { return "string" }
@@ -130,11 +152,15 @@ type IntegerArgumentType struct{ Min, Max int }
 type Float64ArgumentType struct{ Min, Max float64 }
 
 var (
-	ErrArgumentIntegerTooLow  = errors.New("integer too low")
+	// ErrArgumentIntegerTooHigh occurs when the found integer is higher than the specified maximum.
 	ErrArgumentIntegerTooHigh = errors.New("integer too high")
+	// ErrArgumentIntegerTooLow occurs when the found integer is lower than the specified minimum.
+	ErrArgumentIntegerTooLow = errors.New("integer too low")
 
-	ErrArgumentFloatTooLow  = errors.New("float too low")
+	// ErrArgumentFloatTooHigh occurs when the found float is higher than the specified maximum.
 	ErrArgumentFloatTooHigh = errors.New("float too high")
+	// ErrArgumentFloatTooLow occurs when the found float is lower than the specified minimum.
+	ErrArgumentFloatTooLow = errors.New("float too low")
 )
 
 func (t *IntegerArgumentType) String() string { return "int" }
