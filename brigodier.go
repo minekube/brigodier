@@ -591,7 +591,7 @@ func (n *Node) Redirect() CommandNode { return n.redirect }
 func (n *Node) Command() Command      { return n.command }
 func (n *Node) setCommand(c Command)  { n.command = c }
 
-// RootCommandNode is the root a command node tree.
+// RootCommandNode is the root of a command node tree.
 type RootCommandNode struct {
 	Node // The starting root node.
 }
