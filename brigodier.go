@@ -182,40 +182,6 @@ func (d *Dispatcher) FindNode(path ...string) CommandNode {
 	return node
 }
 
-// AddChild adds a CommandNode to the Node's children.
-// Most often times one should use Dispatcher.Register instead.
-func (n *Node) AddChild(nodes ...CommandNode) {
-	for _, node := range nodes {
-		if _, ok := node.(*RootCommandNode); ok {
-			continue
-		}
-
-		child := n.Children()[node.Name()]
-		if child != nil {
-			// We've found something to merge onto
-			if node.Command() != nil {
-				child.setCommand(node.Command())
-			}
-			for _, grandchild := range node.Children() {
-				child.AddChild(grandchild)
-			}
-		} else {
-			n.putChild(node.Name(), node)
-			switch t := node.(type) {
-			case *LiteralCommandNode:
-				n.Literals()[node.Name()] = t
-			case *ArgumentCommandNode:
-				n.Arguments()[node.Name()] = t
-			}
-		}
-	}
-}
-
-func (n *Node) putChild(name string, node CommandNode) {
-	n.Children()[name] = node
-	n.ChildrenOrdered().Put(name, node)
-}
-
 // Command is the command run by Dispatcher.Execute for a matching input.
 type Command interface {
 	Run(c *CommandContext) error
@@ -264,6 +230,8 @@ type CommandNode interface {
 	ChildrenOrdered() StringCommandNodeMap
 	// AddChild adds node children to the node.
 	AddChild(nodes ...CommandNode)
+	// RemoveChild removes child nodes from the node
+	RemoveChild(names ...string)
 	// UsageText returns the usage text of the node.
 	UsageText() string
 }
@@ -283,6 +251,49 @@ type Node struct {
 	command         Command
 	modifier        RedirectModifier
 	forks           bool
+}
+
+// AddChild adds a CommandNode to the Node's children.
+// Most often times one should use Dispatcher.Register instead.
+func (n *Node) AddChild(nodes ...CommandNode) {
+	for _, node := range nodes {
+		if _, ok := node.(*RootCommandNode); ok {
+			continue
+		}
+
+		child := n.Children()[node.Name()]
+		if child != nil {
+			// We've found something to merge onto
+			if node.Command() != nil {
+				child.setCommand(node.Command())
+			}
+			for _, grandchild := range node.Children() {
+				child.AddChild(grandchild)
+			}
+		} else {
+			n.putChild(node.Name(), node)
+			switch t := node.(type) {
+			case *LiteralCommandNode:
+				n.Literals()[node.Name()] = t
+			case *ArgumentCommandNode:
+				n.Arguments()[node.Name()] = t
+			}
+		}
+	}
+}
+
+func (n *Node) putChild(name string, node CommandNode) {
+	n.Children()[name] = node
+	n.ChildrenOrdered().Put(name, node)
+}
+
+func (n *Node) RemoveChild(names ...string) {
+	for _, name := range names {
+		delete(n.Children(), name)
+		delete(n.Arguments(), name)
+		delete(n.Literals(), name)
+		n.ChildrenOrdered().Remove(name)
+	}
 }
 
 func (n *Node) RedirectModifier() RedirectModifier { return n.modifier }
