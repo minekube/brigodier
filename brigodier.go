@@ -248,6 +248,8 @@ type CommandNode interface {
 	// May return nil since not all nodes must be executable.
 	Command() Command
 	setCommand(Command)
+	// Requirement is the optional condition used to run CanUse.
+	Requirement() RequireFn
 	// RedirectModifier is the optional redirect modifier.
 	// May return nil.
 	RedirectModifier() RedirectModifier
@@ -284,6 +286,7 @@ type Node struct {
 }
 
 func (n *Node) RedirectModifier() RedirectModifier { return n.modifier }
+func (n *Node) Requirement() RequireFn             { return n.requirement }
 
 func (n *Node) ChildrenOrdered() StringCommandNodeMap {
 	if n.childrenOrdered == nil {
