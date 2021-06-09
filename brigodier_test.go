@@ -306,7 +306,7 @@ func TestDispatcher_Execute_InvalidSubcommand(t *testing.T) {
 
 func TestDispatcher_Path(t *testing.T) {
 	var d Dispatcher
-	bar := Literal("bar").Build()
+	bar := Literal("bar").BuildLiteral()
 	d.Register(Literal("foo").Then(bar))
 
 	require.Equal(t, []string{"foo", "bar"}, d.Path(bar))
@@ -314,7 +314,7 @@ func TestDispatcher_Path(t *testing.T) {
 
 func TestDispatcher_FindNode(t *testing.T) {
 	var d Dispatcher
-	bar := Literal("bar").Build()
+	bar := Literal("bar").BuildLiteral()
 	d.Register(Literal("foo").Then(bar))
 
 	require.Equal(t, bar, d.FindNode("foo", "bar"))

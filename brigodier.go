@@ -19,8 +19,8 @@ type Dispatcher struct {
 // This is a shortcut for calling Dispatcher.Root.AddChild after building the provided command.
 //
 // As RootCommandNode can only hold literals, this method will only allow literal arguments.
-func (d *Dispatcher) Register(command *LiteralArgumentBuilder) *LiteralCommandNode {
-	b := command.Build()
+func (d *Dispatcher) Register(command LiteralNodeBuilder) *LiteralCommandNode {
+	b := command.BuildLiteral()
 	d.Root.AddChild(b)
 	return b
 }
@@ -229,11 +229,17 @@ type CommandNode interface {
 	// ChildrenOrdered returns the node's children in the same order as registered.
 	ChildrenOrdered() StringCommandNodeMap
 	// AddChild adds node children to the node.
+	// Passing nil is valid and is ignored.
 	AddChild(nodes ...CommandNode)
 	// RemoveChild removes child nodes from the node
 	RemoveChild(names ...string)
 	// UsageText returns the usage text of the node.
 	UsageText() string
+	// CreateBuilder creates a new builder without children from the node.
+	//
+	// Note that a RootCommandNode returns a no-operation builder where Build() returns nil.
+	// Passing such a no-Op builder to Dispatcher.Register is always valid and has no effect.
+	CreateBuilder() NodeBuilder
 }
 
 // RequireFn is the function used for CommandNode.CanUse.
@@ -257,6 +263,9 @@ type Node struct {
 // Most often times one should use Dispatcher.Register instead.
 func (n *Node) AddChild(nodes ...CommandNode) {
 	for _, node := range nodes {
+		if node == nil {
+			continue // skip nil as for nopNodeBuilder
+		}
 		if _, ok := node.(*RootCommandNode); ok {
 			continue
 		}
