@@ -9,21 +9,38 @@ import (
 
 // Builtin argument types.
 var (
-	Bool ArgumentType // Bool argument type.
-
-	Int32 ArgumentType // Int32 argument type.
-	Int64 ArgumentType // Int64 argument type.
-	Int   = Int32      // Int is an alias of Int32.
-
-	Float32 ArgumentType // Float32 argument type.
-	Float64 ArgumentType // Float64 argument type.
-
 	// String argument type is quoted or unquoted.
-	String ArgumentType
+	String ArgumentType = QuotablePhase
 	// StringWord argument type is a single word.
-	StringWord ArgumentType
+	StringWord ArgumentType = SingleWord
 	// StringPhrase argument type is phrase.
-	StringPhrase ArgumentType
+	StringPhrase ArgumentType = GreedyPhrase
+	// Bool argument type.
+	Bool ArgumentType = &BoolArgumentType{}
+
+	// Int32 argument type.
+	Int32 ArgumentType = &Int32ArgumentType{
+		Min: MinInt32,
+		Max: MaxInt32,
+	}
+	// Int64 argument type.
+	Int64 ArgumentType = &Int64ArgumentType{
+		Min: MinInt64,
+		Max: MaxInt64,
+	}
+	// Int is an alias of Int32.
+	Int = Int32
+
+	// Float32 argument type.
+	Float32 ArgumentType = &Float32ArgumentType{
+		Min: MinFloat32,
+		Max: MaxFloat32,
+	}
+	// Float64 argument type.
+	Float64 ArgumentType = &Float64ArgumentType{
+		Min: MinFloat64,
+		Max: MaxFloat64,
+	}
 )
 
 // Default minimums and maximums of builtin numeric ArgumentType values.
@@ -55,30 +72,6 @@ type ArgumentTypeFuncs struct {
 
 func (t *ArgumentTypeFuncs) Parse(rd *StringReader) (interface{}, error) { return t.ParseFn(rd) }
 func (t *ArgumentTypeFuncs) String() string                              { return t.Name }
-
-// Initialize builtin argument types.
-func init() {
-	Bool = &BoolArgumentType{}
-	Int32 = &Int32ArgumentType{
-		Min: MinInt32,
-		Max: MaxInt32,
-	}
-	Int64 = &Int64ArgumentType{
-		Min: MinInt64,
-		Max: MaxInt64,
-	}
-	Float32 = &Float32ArgumentType{
-		Min: MinFloat32,
-		Max: MaxFloat32,
-	}
-	Float64 = &Float64ArgumentType{
-		Min: MinFloat64,
-		Max: MaxFloat64,
-	}
-	String = QuotablePhase
-	StringWord = SingleWord
-	StringPhrase = GreedyPhrase
-}
 
 // Int returns the parsed int argument from the command context.
 // It returns the zero-value if not found.
