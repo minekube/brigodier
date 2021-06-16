@@ -11,8 +11,11 @@ import (
 var (
 	Bool ArgumentType // Bool argument type.
 
-	Int     ArgumentType // Int argument type.
-	Int32   = Int        // Int32 is an alias of Int.
+	Int32 ArgumentType // Int32 argument type.
+	Int64 ArgumentType // Int64 argument type.
+	Int   = Int32      // Int is an alias of Int32.
+
+	Float32 ArgumentType // Float32 argument type.
 	Float64 ArgumentType // Float64 argument type.
 
 	// String argument type is quoted or unquoted.
@@ -21,6 +24,18 @@ var (
 	StringWord ArgumentType
 	// StringPhrase argument type is phrase.
 	StringPhrase ArgumentType
+)
+
+// Default minimums and maximums of builtin numeric ArgumentType values.
+const (
+	MinInt32   = math.MinInt32
+	MaxInt32   = math.MaxInt32
+	MinInt64   = math.MinInt32
+	MaxInt64   = math.MaxInt64
+	MinFloat32 = -math.MaxFloat32
+	MaxFloat32 = math.MaxFloat32
+	MinFloat64 = -math.MaxFloat64
+	MaxFloat64 = math.MaxFloat64
 )
 
 // ArgumentType is a parsable argument type.
@@ -43,25 +58,22 @@ func (t *ArgumentTypeFuncs) String() string                              { retur
 
 // Initialize builtin argument types.
 func init() {
-	Bool = &ArgumentTypeFuncs{
-		Name:    "bool",
-		ParseFn: func(rd *StringReader) (interface{}, error) { return rd.ReadBool() },
-		SuggestionsFn: func(ctx *CommandContext, builder *SuggestionsBuilder) *Suggestions {
-			if strings.HasPrefix("true", builder.RemainingLowerCase) {
-				builder.Suggest("true")
-			} else if strings.HasPrefix("false", builder.RemainingLowerCase) {
-				builder.Suggest("false")
-			}
-			return builder.Build()
-		},
+	Bool = &BoolArgumentType{}
+	Int32 = &Int32ArgumentType{
+		Min: MinInt32,
+		Max: MaxInt32,
 	}
-	Int = &IntegerArgumentType{
-		Min: math.MinInt32,
-		Max: math.MaxInt32,
+	Int64 = &Int64ArgumentType{
+		Min: MinInt64,
+		Max: MaxInt64,
+	}
+	Float32 = &Float32ArgumentType{
+		Min: MinFloat32,
+		Max: MaxFloat32,
 	}
 	Float64 = &Float64ArgumentType{
-		Min: -math.MaxFloat64,
-		Max: math.MaxFloat64,
+		Min: MinFloat64,
+		Max: MaxFloat64,
 	}
 	String = QuotablePhase
 	StringWord = SingleWord
@@ -148,7 +160,10 @@ func (t StringType) Parse(rd *StringReader) (interface{}, error) {
 	}
 }
 
-type IntegerArgumentType struct{ Min, Max int }
+type BoolArgumentType struct{}
+type Int32ArgumentType struct{ Min, Max int }
+type Int64ArgumentType struct{ Min, Max int64 }
+type Float32ArgumentType struct{ Min, Max float32 }
 type Float64ArgumentType struct{ Min, Max float64 }
 
 var (
@@ -163,42 +178,66 @@ var (
 	ErrArgumentFloatTooLow = errors.New("float too low")
 )
 
-func (t *IntegerArgumentType) String() string { return "int" }
-func (t *IntegerArgumentType) Parse(rd *StringReader) (interface{}, error) {
+func (t *BoolArgumentType) String() string                              { return "bool" }
+func (t *BoolArgumentType) Parse(rd *StringReader) (interface{}, error) { return rd.ReadBool() }
+func (t *BoolArgumentType) Suggestions(_ *CommandContext, builder *SuggestionsBuilder) *Suggestions {
+	if strings.HasPrefix("true", builder.RemainingLowerCase) {
+		builder.Suggest("true")
+	} else if strings.HasPrefix("false", builder.RemainingLowerCase) {
+		builder.Suggest("false")
+	}
+	return builder.Build()
+}
+func (t *Int32ArgumentType) String() string { return "int32" }
+func (t *Int32ArgumentType) Parse(rd *StringReader) (interface{}, error) {
+	return parseInt(rd, 32, int64(t.Min), int64(t.Max))
+}
+func (t *Int64ArgumentType) String() string { return "int64" }
+func (t *Int64ArgumentType) Parse(rd *StringReader) (interface{}, error) {
+	return parseInt(rd, 64, t.Min, t.Max)
+}
+func parseInt(rd *StringReader, bitSize int, min, max int64) (interface{}, error) {
 	start := rd.Cursor
-	result, err := rd.ReadInt()
+	result, err := rd.readInt(bitSize)
 	if err != nil {
 		return nil, err
 	}
-	if result < t.Min {
+	if result < min {
 		rd.Cursor = start
 		return nil, &CommandSyntaxError{Err: fmt.Errorf("%w (%d < %d)",
-			ErrArgumentIntegerTooLow, result, t.Min)}
+			ErrArgumentIntegerTooLow, result, min)}
 	}
-	if result > t.Max {
+	if result > max {
 		rd.Cursor = start
 		return nil, &CommandSyntaxError{Err: fmt.Errorf("%w (%d > %d)",
-			ErrArgumentIntegerTooHigh, result, t.Max)}
+			ErrArgumentIntegerTooHigh, result, max)}
 	}
 	return result, nil
 }
 
 func (t *Float64ArgumentType) String() string { return "float64" }
 func (t *Float64ArgumentType) Parse(rd *StringReader) (interface{}, error) {
+	return parseFloat(rd, 64, t.Min, t.Max)
+}
+func (t *Float32ArgumentType) String() string { return "float32" }
+func (t *Float32ArgumentType) Parse(rd *StringReader) (interface{}, error) {
+	return parseFloat(rd, 32, float64(t.Min), float64(t.Max))
+}
+func parseFloat(rd *StringReader, bitSize int, min, max float64) (interface{}, error) {
 	start := rd.Cursor
-	result, err := rd.ReadFloat64()
+	result, err := rd.readFloat(bitSize)
 	if err != nil {
 		return nil, err
 	}
-	if result < t.Min {
+	if result < min {
 		rd.Cursor = start
 		return nil, &CommandSyntaxError{Err: fmt.Errorf("%w (%f < %f)",
-			ErrArgumentFloatTooLow, result, t.Min)}
+			ErrArgumentFloatTooLow, result, min)}
 	}
-	if result > t.Max {
+	if result > max {
 		rd.Cursor = start
 		return nil, &CommandSyntaxError{Err: fmt.Errorf("%w (%f > %f)",
-			ErrArgumentFloatTooHigh, result, t.Max)}
+			ErrArgumentFloatTooHigh, result, max)}
 	}
 	return result, nil
 }

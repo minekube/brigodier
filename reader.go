@@ -187,8 +187,22 @@ var (
 	ErrReaderInvalidFloat = errors.New("read invalid float")
 )
 
-// ReadInt tries to read an int.
+// ReadInt tries to read an int32.
 func (r *StringReader) ReadInt() (int, error) {
+	i, err := r.ReadInt32()
+	return int(i), err
+}
+
+// ReadInt32 tries to read an int32.
+func (r *StringReader) ReadInt32() (int32, error) {
+	i, err := r.readInt(32)
+	return int32(i), err
+}
+
+// ReadInt64 tries to read an int64.
+func (r *StringReader) ReadInt64() (int64, error) { return r.readInt(64) }
+
+func (r *StringReader) readInt(bitSize int) (int64, error) {
 	start := r.Cursor
 	for r.CanRead() && IsAllowedNumber(r.Peek()) {
 		r.Skip()
@@ -200,7 +214,7 @@ func (r *StringReader) ReadInt() (int, error) {
 			Reader: r,
 		}}
 	}
-	i, err := strconv.ParseInt(number, 0, 32)
+	i, err := strconv.ParseInt(number, 0, bitSize)
 	if err != nil {
 		r.Cursor = start
 		return 0, &CommandSyntaxError{Err: &ReaderError{
@@ -211,11 +225,21 @@ func (r *StringReader) ReadInt() (int, error) {
 			Reader: r,
 		}}
 	}
-	return int(i), nil
+	return i, nil
 }
 
-// ReadFloat64 tries to read an float64.
+// ReadFloat32 tries to read a float32.
+func (r *StringReader) ReadFloat32() (float32, error) {
+	f, err := r.readFloat(32)
+	return float32(f), err
+}
+
+// ReadFloat64 tries to read a float64.
 func (r *StringReader) ReadFloat64() (float64, error) {
+	return r.readFloat(64)
+}
+
+func (r *StringReader) readFloat(bitSize int) (float64, error) {
 	start := r.Cursor
 	for r.CanRead() && IsAllowedNumber(r.Peek()) {
 		r.Skip()
@@ -227,7 +251,7 @@ func (r *StringReader) ReadFloat64() (float64, error) {
 			Reader: r,
 		}}
 	}
-	f, err := strconv.ParseFloat(number, 64)
+	f, err := strconv.ParseFloat(number, bitSize)
 	if err != nil {
 		r.Cursor = start
 		return 0, &CommandSyntaxError{Err: &ReaderError{
