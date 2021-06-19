@@ -172,18 +172,17 @@ func (d *Dispatcher) smartUsage(ctx context.Context, node CommandNode, optional 
 			}
 			return b.String()
 		} else if len(children) > 1 {
-			s := new(bytes.Buffer)
-			s.WriteRune(openChar)
 			for i, child := range children {
-				if i != 0 {
-					s.WriteRune(UsageOr)
+				if i == 0 {
+					b.WriteRune(ArgumentSeparator)
+					b.WriteRune(openChar)
+				} else {
+					b.WriteRune(UsageOr)
 				}
-				s.WriteString(child.UsageText())
-			}
-			if len(children) != 0 {
-				b.WriteRune(ArgumentSeparator)
-				_, _ = s.WriteTo(b)
-				b.WriteRune(closeChar)
+				b.WriteString(child.UsageText())
+				if i == len(children)-1 {
+					b.WriteRune(closeChar)
+				}
 			}
 		}
 	}
