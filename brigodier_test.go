@@ -270,7 +270,7 @@ func TestDispatcher_Execute_SimpleRedirect(t *testing.T) {
 		Then(Literal("bar").
 			Then(Argument("value", Int).Executes(cmd))).
 		Then(Literal("awa").Executes(cmd)))
-	
+
 	// Create redirect to the foo command
 	d.Register(Literal("baz").Redirect(foo))
 
@@ -291,7 +291,7 @@ func TestDispatcher_IncompleteRedirectShouldThrow(t *testing.T) {
 		Then(Literal("bar").
 			Then(Argument("value", Int).Executes(cmd))).
 		Then(Literal("awa").Executes(cmd)))
-	
+
 	// Create redirect to the foo command
 	d.Register(Literal("baz").Redirect(foo))
 
@@ -307,6 +307,14 @@ func TestDispatcher_IncompleteRedirectShouldThrow(t *testing.T) {
 	}
 }
 
+// contextKey is a custom type to avoid context key collisions
+type contextKey string
+
+const (
+	sourceKey     contextKey = "source"
+	shouldFailKey contextKey = "shouldFail"
+)
+
 // TestDispatcher_Execute_CorrectExecuteContextAfterRedirect tests context handling with redirects and modifiers
 func TestDispatcher_Execute_CorrectExecuteContextAfterRedirect(t *testing.T) {
 	var d Dispatcher
@@ -314,7 +322,7 @@ func TestDispatcher_Execute_CorrectExecuteContextAfterRedirect(t *testing.T) {
 
 	// Command that returns the source value
 	runCmd := CommandFunc(func(c *CommandContext) error {
-		if source, ok := c.Context.Value("source").(int); ok {
+		if source, ok := c.Context.Value(sourceKey).(int); ok {
 			results = append(results, source)
 		}
 		return nil
@@ -322,10 +330,10 @@ func TestDispatcher_Execute_CorrectExecuteContextAfterRedirect(t *testing.T) {
 
 	// Modifier that adds value to source
 	addModifier := ModifierFunc(func(c *CommandContext) (context.Context, error) {
-		sourceVal, _ := c.Context.Value("source").(int)
+		sourceVal, _ := c.Context.Value(sourceKey).(int)
 		argVal := c.Int("value")
 		newSource := sourceVal + argVal
-		return context.WithValue(context.Background(), "source", newSource), nil
+		return context.WithValue(context.Background(), sourceKey, newSource), nil
 	})
 
 	// Register commands with redirect and modifier
@@ -342,7 +350,7 @@ func TestDispatcher_Execute_CorrectExecuteContextAfterRedirect(t *testing.T) {
 	}{
 		{"run", 0, []int{0}},
 		{"run", 1, []int{1}},
-		{"add 5 run", 1, []int{6}},      // 1 + 5
+		{"add 5 run", 1, []int{6}},        // 1 + 5
 		{"add 5 add 6 run", 2, []int{13}}, // 2 + 5 + 6
 		{"add 5 blank run", 1, []int{6}},  // 1 + 5 (blank doesn't modify)
 		{"blank add 5 run", 1, []int{6}},  // 1 + 5
@@ -351,7 +359,7 @@ func TestDispatcher_Execute_CorrectExecuteContextAfterRedirect(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.cmd, func(t *testing.T) {
 			results = nil
-			ctx := context.WithValue(context.Background(), "source", tc.source)
+			ctx := context.WithValue(context.Background(), sourceKey, tc.source)
 			err := d.Do(ctx, tc.cmd)
 			require.NoError(t, err)
 			require.Equal(t, tc.expected, results)
@@ -366,7 +374,7 @@ func TestDispatcher_Execute_SharedRedirectAndExecuteNodes(t *testing.T) {
 
 	// Command that captures the source value
 	captureCmd := CommandFunc(func(c *CommandContext) error {
-		if source, ok := c.Context.Value("source").(int); ok {
+		if source, ok := c.Context.Value(sourceKey).(int); ok {
 			results = append(results, source)
 		}
 		return nil
@@ -374,10 +382,10 @@ func TestDispatcher_Execute_SharedRedirectAndExecuteNodes(t *testing.T) {
 
 	// Modifier that adds argument value to source
 	addModifier := ModifierFunc(func(c *CommandContext) (context.Context, error) {
-		sourceVal, _ := c.Context.Value("source").(int)
+		sourceVal, _ := c.Context.Value(sourceKey).(int)
 		argVal := c.Int("value")
 		newSource := sourceVal + argVal
-		return context.WithValue(context.Background(), "source", newSource), nil
+		return context.WithValue(context.Background(), sourceKey, newSource), nil
 	})
 
 	// Register command that both redirects and executes
@@ -388,14 +396,14 @@ func TestDispatcher_Execute_SharedRedirectAndExecuteNodes(t *testing.T) {
 
 	// Test execution without redirect - just captures original source
 	results = nil
-	ctx := context.WithValue(context.Background(), "source", 1)
+	ctx := context.WithValue(context.Background(), sourceKey, 1)
 	err := d.Do(ctx, "add 5")
 	require.NoError(t, err)
 	require.Equal(t, []int{1}, results) // Should execute with original source
 
 	// Test execution with redirect - captures modified source in redirect
 	results = nil
-	ctx = context.WithValue(context.Background(), "source", 1)
+	ctx = context.WithValue(context.Background(), sourceKey, 1)
 	err = d.Do(ctx, "add 5 add 6")
 	require.NoError(t, err)
 	// The current Go implementation only executes the redirected command, not both
@@ -519,7 +527,7 @@ func TestDispatcher_Execute_PartialExceptionInForkedRedirect(t *testing.T) {
 
 	// Command that sometimes fails
 	cmd := CommandFunc(func(c *CommandContext) error {
-		if source, ok := c.Context.Value("shouldFail").(bool); ok && source {
+		if source, ok := c.Context.Value(shouldFailKey).(bool); ok && source {
 			return testErr
 		}
 		successCount++
@@ -530,9 +538,9 @@ func TestDispatcher_Execute_PartialExceptionInForkedRedirect(t *testing.T) {
 	multiModifier := ModifierFunc(func(c *CommandContext) (context.Context, error) {
 		// Return multiple contexts - some will succeed, some will fail
 		contexts := []context.Context{
-			context.WithValue(context.Background(), "shouldFail", false), // Success
-			context.WithValue(context.Background(), "shouldFail", true),  // Fail
-			context.WithValue(context.Background(), "shouldFail", false), // Success
+			context.WithValue(context.Background(), shouldFailKey, false), // Success
+			context.WithValue(context.Background(), shouldFailKey, true),  // Fail
+			context.WithValue(context.Background(), shouldFailKey, false), // Success
 		}
 		// For simplicity, just return the first one - real implementation would handle multiple
 		return contexts[0], nil

@@ -281,8 +281,9 @@ func (r *RootCommandNode) CreateBuilder() NodeBuilder {
 }
 
 // nodeBuilder implements NodeBuilder and wraps either one of:
-//  LiteralNodeBuilder
-//  ArgumentNodeBuilder
+//
+//	LiteralNodeBuilder
+//	ArgumentNodeBuilder
 type nodeBuilder struct {
 	l LiteralNodeBuilder
 	a ArgumentNodeBuilder

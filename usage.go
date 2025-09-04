@@ -12,8 +12,9 @@ import (
 // The returned syntax will be in "simple" form: <param> and literal.
 // "Optional" nodes will be listed as multiple entries: the parent node, and the child nodes.
 // For example, a required literal "foo" followed by an optional param "int" will be two nodes:
-//  foo
-//  foo <int>
+//
+//	foo
+//	foo <int>
 //
 // The path to the specified node will NOT be prepended to the output, as there can theoretically be many
 // ways to reach a given node. It will only give you paths relative to the specified node, not absolute from root.
@@ -77,7 +78,8 @@ const (
 // The returned syntax will be in "smart" form: <param>, literal, [optional] and (either|or).
 // These forms may be mixed and matched to provide as much information about the child nodes as it can, without being too verbose.
 // For example, a required literal "foo" followed by an optional param "int" can be compressed into one string:
-//  foo [<int>]
+//
+//	foo [<int>]
 //
 // The path to the specified node will NOT be prepended to the output, as there can theoretically be many
 // ways to reach a given node. It will only give you paths relative to the specified node, not absolute from root.
