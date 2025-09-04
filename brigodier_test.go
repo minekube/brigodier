@@ -556,6 +556,119 @@ func TestDispatcher_Execute_PartialExceptionInForkedRedirect(t *testing.T) {
 	require.Equal(t, 1, successCount, "At least one execution should succeed")
 }
 
+// TestDispatcher_CreateAndExecuteCommand tests basic command creation and execution
+func TestDispatcher_CreateAndExecuteCommand(t *testing.T) {
+	var d Dispatcher
+	var executed bool
+	cmd := CommandFunc(func(c *CommandContext) error { executed = true; return nil })
+
+	d.Register(Literal("foo").Executes(cmd))
+
+	executed = false
+	err := d.Do(context.TODO(), "foo")
+	require.NoError(t, err)
+	require.True(t, executed, "Command should have been executed")
+}
+
+// TestDispatcher_CreateAndExecuteOffsetCommand tests command execution with input offset
+func TestDispatcher_CreateAndExecuteOffsetCommand(t *testing.T) {
+	var d Dispatcher
+	var executed bool
+	cmd := CommandFunc(func(c *CommandContext) error { executed = true; return nil })
+
+	d.Register(Literal("foo").Executes(cmd))
+
+	// Test with offset input (simulating "/foo" with offset 1 to get "foo")
+	reader := &StringReader{String: "/foo", Cursor: 1}
+	parse := d.ParseReader(context.TODO(), reader)
+
+	executed = false
+	err := d.Execute(parse)
+	require.NoError(t, err)
+	require.True(t, executed, "Command should have been executed with offset input")
+}
+
+// TestDispatcher_CreateAndMergeCommands tests command merging with shared base
+func TestDispatcher_CreateAndMergeCommands(t *testing.T) {
+	var d Dispatcher
+	var fooExecuted, barExecuted bool
+
+	fooCmd := CommandFunc(func(c *CommandContext) error { fooExecuted = true; return nil })
+	barCmd := CommandFunc(func(c *CommandContext) error { barExecuted = true; return nil })
+
+	// Register commands that should merge under "base"
+	d.Register(Literal("base").Then(Literal("foo").Executes(fooCmd)))
+	d.Register(Literal("base").Then(Literal("bar").Executes(barCmd)))
+
+	// Test first command
+	fooExecuted, barExecuted = false, false
+	err := d.Do(context.TODO(), "base foo")
+	require.NoError(t, err)
+	require.True(t, fooExecuted, "foo command should have been executed")
+	require.False(t, barExecuted, "bar command should not have been executed")
+
+	// Test second command
+	fooExecuted, barExecuted = false, false
+	err = d.Do(context.TODO(), "base bar")
+	require.NoError(t, err)
+	require.False(t, fooExecuted, "foo command should not have been executed")
+	require.True(t, barExecuted, "bar command should have been executed")
+}
+
+// TestDispatcher_ExceptionInNonForkedCommand tests exception handling in non-forked commands
+func TestDispatcher_ExceptionInNonForkedCommand(t *testing.T) {
+	var d Dispatcher
+	testErr := errors.New("test command error")
+	cmd := CommandFunc(func(c *CommandContext) error { return testErr })
+
+	d.Register(Literal("crash").Executes(cmd))
+
+	// Test that exception propagates in non-forked command
+	err := d.Do(context.TODO(), "crash")
+	require.Error(t, err)
+	require.Equal(t, testErr, err)
+}
+
+// TestDispatcher_ResultConsumerInNonErrorRun tests result consumer callback (not implemented in Go brigodier)
+func TestDispatcher_ResultConsumerInNonErrorRun(t *testing.T) {
+	var d Dispatcher
+	cmd := CommandFunc(func(c *CommandContext) error { return nil })
+
+	d.Register(Literal("foo").Executes(cmd))
+
+	// Go brigodier doesn't have result consumer functionality like Java
+	// This test documents the missing feature
+	err := d.Do(context.TODO(), "foo")
+	require.NoError(t, err)
+
+	// TODO: Go brigodier lacks result consumer/callback functionality
+	// This would require adding SetConsumer method and callback support
+	t.Log("Go brigodier lacks result consumer functionality - feature gap with Java")
+}
+
+// TestDispatcher_ResultConsumerInForkedNonErrorRun tests result consumer in forked commands (not implemented)
+func TestDispatcher_ResultConsumerInForkedNonErrorRun(t *testing.T) {
+	var d Dispatcher
+	cmd := CommandFunc(func(c *CommandContext) error { return nil })
+
+	// Modifier that creates multiple contexts
+	multiModifier := ModifierFunc(func(c *CommandContext) (context.Context, error) {
+		// In a real implementation, this would return multiple contexts
+		// For now, just return one context
+		return context.Background(), nil
+	})
+
+	d.Register(Literal("foo").Executes(cmd))
+	d.Register(Literal("repeat").Fork(&d.Root, multiModifier))
+
+	// Go brigodier doesn't have result consumer functionality
+	err := d.Do(context.TODO(), "repeat foo")
+	require.NoError(t, err)
+
+	// TODO: Go brigodier lacks forked result consumer functionality
+	t.Log("Go brigodier lacks forked result consumer functionality - feature gap with Java")
+}
+
 func TestDispatcher_Execute_OrphanedSubcommand(t *testing.T) {
 	var d Dispatcher
 	cmd := CommandFunc(func(c *CommandContext) error { return nil })
